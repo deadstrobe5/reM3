@@ -1,0 +1,37 @@
+# Environment variables
+.env
+
+# Data and personal notes
+data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+
+# Testing
+testing/render_optimization/results/
+testing/model_comparison/results/
+testing/**/*.png
+testing/**/*.jpg
+testing/**/*.svg
+testing/**/*.txt
+testing/**/*.json
+!testing/**/*.py
+!testing/**/*.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

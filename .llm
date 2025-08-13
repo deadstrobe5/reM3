@@ -1,0 +1,76 @@
+# reMarkable Sync Tool
+
+A Python tool to sync, organize, and export content from reMarkable tablets.
+
+## Quick Start
+```bash
+python3 main.py go  # First-time setup and sync everything
+```
+
+## Project Structure
+```
+reMarkable/
+├── main.py                 # CLI entry point
+├── requirements.txt        # Dependencies (paramiko, pillow, cairosvg, openai)
+├── .env                   # Local config (RM_HOST, RM_USER, RM_PASSWORD)
+│
+├── src/                   # Core modules
+│   ├── config.py          # Configuration management
+│   ├── utils.py           # Common utilities
+│   ├── sync.py            # SFTP pull from tablet
+│   ├── index.py           # Build document index
+│   ├── organize.py        # Create collection structure
+│   ├── setup_wizard.py    # Interactive setup
+│   ├── export_text.py     # Export to text (orchestrator)
+│   ├── rm_render.py       # Convert .rm files to images
+│   └── openai_transcribe.py # AI vision transcription
+│
+└── data/                  # Local data (gitignored)
+    ├── raw/               # Raw files from tablet
+    ├── organized/         # Organized with symlinks
+    ├── index.csv          # Document metadata
+    └── text/              # Exported text files
+```
+
+## Key Commands
+- `pull` - Download raw files from tablet via SFTP
+- `index` - Build CSV index from raw files
+- `organize` - Create folder structure with symlinks
+- `export-text` - Convert documents to text using OpenAI
+- `go` - Do everything automatically
+
+## Data Flow
+1. **Pull**: Tablet → `data/raw/` (via SFTP)
+2. **Index**: `data/raw/` → `data/index.csv`
+3. **Organize**: `data/raw/` → `data/organized/` (symlinks)
+4. **Export**: `data/raw/` → render → OpenAI → `data/text/`
+
+## File Types
+- `{uuid}.metadata` - Document metadata (JSON)
+- `{uuid}.content` - Content info (JSON)
+- `{uuid}.pdf/epub` - Imported documents
+- `{uuid}/` - Notebook with .rm pages
+- `{uuid}/*.rm` - Handwritten page data
+
+## Key Modules
+- **sync.py**: SFTP operations, pulls from `/home/root/.local/share/remarkable/xochitl/`
+- **organize.py**: Builds collection tree, handles parent-child relationships
+- **rm_render.py**: Converts .rm → SVG → PNG/JPEG using rmc and cairosvg
+- **openai_transcribe.py**: Sends images to GPT-4 Vision for transcription
+
+## Configuration
+Environment variables or .env file:
+- `RM_HOST` - Tablet IP (default: 10.11.99.1)
+- `RM_USER` - SSH user (default: root)
+- `RM_PASSWORD` - SSH password
+- `OPENAI_API_KEY` - For text export
+
+## Important Paths
+- Raw storage renamed from "xochitl" to "raw" for clarity
+- All paths use `Path` objects from pathlib
+- Symlinks are relative for portability
+
+## Recent Optimizations
+- Render settings: DPI=200, stroke_scale=2.0, height=2000px, JPEG 95%
+- Modularized main.py - now just a thin CLI orchestrator
+- Clean separation of concerns across modules

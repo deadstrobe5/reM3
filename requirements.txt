@@ -1,0 +1,5 @@
+paramiko>=3.4.0
+openai>=1.35.0
+rmc==0.3.0
+cairosvg>=2.7.0
+
