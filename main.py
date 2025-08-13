@@ -248,12 +248,12 @@ def cmd_export_text(args: argparse.Namespace) -> None:
 def _get_document_name_from_index(uuid: str, index_file: Path) -> str:
     """Helper to get document name from index file."""
     try:
-        import csv
+        import json
         with open(index_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["uuid"] == uuid:
-                    return row["visibleName"]
+            catalog = json.load(f)
+            for doc in catalog.get("documents", []):
+                if doc["uuid"] == uuid:
+                    return doc["title"]
     except:
         pass
     return f"Document {uuid[:8]}..."
@@ -261,22 +261,20 @@ def _get_document_name_from_index(uuid: str, index_file: Path) -> str:
 
 def _select_test_document(index_file: Path, console) -> List[str]:
     """Select a small document for testing transcription."""
-    import csv
-
     try:
+        import json
         with open(index_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
+            catalog = json.load(f)
             documents = []
-            for row in reader:
-                if (row["nodeType"] == "DocumentType" and
-                    row["fileType"] == "notebook" and
-                    row["parentUuid"] != "trash" and
-                    row["pageCount"].isdigit()):
-                    pages = int(row["pageCount"])
+            for doc in catalog.get("documents", []):
+                if (doc["type"] == "notebook" and
+                    doc.get("parent", "") != "trash" and
+                    not doc.get("is_trashed", False)):
+                    pages = doc.get("pages", 0)
                     if pages > 0 and pages <= 3:  # Small documents only
                         documents.append({
-                            "uuid": row["uuid"],
-                            "name": row["visibleName"],
+                            "uuid": doc["uuid"],
+                            "name": doc["title"],
                             "pages": pages
                         })
 

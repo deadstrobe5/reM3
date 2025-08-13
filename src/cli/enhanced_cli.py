@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import csv
+import json
 from pathlib import Path
 from typing import List
 
@@ -352,10 +352,10 @@ class EnhancedCLI:
         """Get document name from UUID."""
         try:
             with open(self.config.index_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    if row["uuid"] == uuid:
-                        return row["visibleName"]
+                catalog = json.load(f)
+                for doc in catalog.get("documents", []):
+                    if doc["uuid"] == uuid:
+                        return doc["title"]
         except:
             pass
         return f"Document {uuid[:8]}..."
@@ -410,16 +410,16 @@ class EnhancedCLI:
 
         try:
             with open(self.config.index_file, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                uuid_to_doc = {row["uuid"]: row for row in reader}
+                catalog = json.load(f)
+                uuid_to_doc = {doc["uuid"]: doc for doc in catalog.get("documents", [])}
 
             for uuid in document_uuids:
                 if uuid in uuid_to_doc:
                     doc = uuid_to_doc[uuid]
-                    pages = int(doc["pageCount"]) if doc["pageCount"].isdigit() else 0
+                    pages = doc.get("pages", 0)
                     documents.append({
                         "uuid": uuid,
-                        "name": doc["visibleName"],
+                        "name": doc["title"],
                         "pages": pages
                     })
                     total_pages += pages
@@ -434,13 +434,7 @@ class EnhancedCLI:
             self.console.print("[red]No valid documents found for transcription[/red]")
             return 1
 
-        # Show cost estimate and confirm
-        estimate = self.transcription_manager.estimate_cost(total_pages)
-        self.transcription_manager.show_cost_warning(estimate)
-
-        if not self.force and not self._safe_confirm("\nProceed with transcription?"):
-            self.console.print("[cyan]👋 Transcription cancelled by user[/cyan]")
-            return 0
+        # TranscriptionManager already handles cost estimation and confirmation
 
         # Run transcription
         return self._run_transcription(document_uuids)

@@ -92,12 +92,12 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
 def _get_document_name(doc_uuid: str, index_file: Path) -> str:
     """Get document name from index file."""
     try:
-        import csv
+        import json
         with open(index_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["uuid"] == doc_uuid:
-                    return row["visibleName"]
+            catalog = json.load(f)
+            for doc in catalog.get("documents", []):
+                if doc["uuid"] == doc_uuid:
+                    return doc["title"]
     except:
         pass
     return f"Document {doc_uuid[:8]}..."

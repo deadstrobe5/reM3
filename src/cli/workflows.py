@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import csv
+import json
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 
@@ -57,8 +57,8 @@ def estimate_transcription_cost(document_uuids: List[str], index_file: Path, mod
 
     try:
         with open(index_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            uuid_to_pages = {row["uuid"]: int(row["pageCount"]) if row["pageCount"].isdigit() else 0 for row in reader}
+            catalog = json.load(f)
+            uuid_to_pages = {doc["uuid"]: doc.get("pages", 0) for doc in catalog.get("documents", [])}
 
         for uuid in document_uuids:
             total_pages += uuid_to_pages.get(uuid, 0)

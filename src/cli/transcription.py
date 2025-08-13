@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import csv
+import json
 from pathlib import Path
 from typing import List, Dict, Tuple, Union
 
@@ -67,23 +67,25 @@ class TranscriptionManager:
             return documents, stats
 
         with open(index_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
+            catalog = json.load(f)
+
+            for doc in catalog.get("documents", []):
                 stats["total"] += 1
 
-                if row["nodeType"] == "DocumentType" and row["fileType"] == "notebook":
+                if doc["type"] == "notebook" and not doc.get("is_trashed", False):
                     stats["notebooks"] += 1
-                    pages = int(row["pageCount"]) if row["pageCount"].isdigit() else 0
+                    pages = doc.get("pages", 0)
                     stats["pages"] += pages
 
                     documents.append({
-                        "uuid": row["uuid"],
-                        "name": row["visibleName"],
+                        "uuid": doc["uuid"],
+                        "name": doc["title"],
                         "pages": pages,
-                        "parent": row["parentUuid"]
+                        "parent": doc.get("parent", "")
                     })
-                elif row["nodeType"] == "CollectionType":
-                    stats["collections"] += 1
+
+            for col in catalog.get("collections", []):
+                stats["collections"] += 1
 
         return documents, stats
 
@@ -91,7 +93,20 @@ class TranscriptionManager:
         """Show available documents in a tree structure."""
         tree = Tree("📚 Available Documents for Transcription")
 
-        # Group by parent for tree structure
+        if not documents:
+            self.console.print(tree)
+            return
+
+        # Get collection names from catalog file
+        collections = {}
+        try:
+            with open(self.config.index_file, 'r', encoding='utf-8') as f:
+                catalog = json.load(f)
+                collections = {col["uuid"]: col["name"] for col in catalog.get("collections", [])}
+        except Exception:
+            pass
+
+        # Group documents by parent for tree structure
         children_by_parent = {}
         root_docs = []
 
@@ -107,16 +122,19 @@ class TranscriptionManager:
         def add_doc_to_tree(tree_node, doc):
             pages_text = f"({doc['pages']} page{'s' if doc['pages'] != 1 else ''})"
             node_text = f"[cyan]{doc['name']}[/cyan] [dim]{pages_text}[/dim]"
-            doc_node = tree_node.add(node_text)
-
-            # Add children if any
-            if doc["uuid"] in children_by_parent:
-                for child in children_by_parent[doc["uuid"]]:
-                    add_doc_to_tree(doc_node, child)
+            tree_node.add(node_text)
 
         # Add root documents
         for doc in root_docs:
             add_doc_to_tree(tree, doc)
+
+        # Add collections with their documents
+        for collection_uuid, collection_docs in children_by_parent.items():
+            collection_name = collections.get(collection_uuid, f"Collection {collection_uuid[:8]}")
+            collection_node = tree.add(f"📁 [bold yellow]{collection_name}[/bold yellow]")
+
+            for doc in collection_docs:
+                add_doc_to_tree(collection_node, doc)
 
         self.console.print(tree)
 
@@ -148,7 +166,7 @@ class TranscriptionManager:
             else:
                 desc = ""
 
-            table.add_row(f"{i}.", f"{choice} {desc}")
+            table.add_row(f"{i}.", choice, desc)
 
         self.console.print(table)
 
