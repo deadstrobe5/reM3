@@ -8,6 +8,8 @@ from PIL import Image, ImageOps
 import cairosvg
 import re
 
+from ..errors import RenderError
+
 
 @dataclass(frozen=True)
 class RenderSettings:
@@ -26,7 +28,19 @@ def _rm_to_svg(rm_file: Path, svg_out: Path) -> None:
     """Convert .rm to SVG using rmc."""
     svg_out.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["rmc", "-t", "svg", str(rm_file), "-o", str(svg_out)]
-    subprocess.run(cmd, check=True, capture_output=True)
+
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        raise RenderError(
+            f"Failed to convert .rm file to SVG: {rm_file.name}",
+            f"Command: {' '.join(cmd)}\nError: {e.stderr}"
+        )
+    except FileNotFoundError:
+        raise RenderError(
+            "rmc tool not found",
+            "Install rmc: https://github.com/lschwetlick/rmc"
+        )
 
 
 def _thicken_svg_strokes(svg_path: Path, scale: float = 3.0) -> None:
@@ -70,7 +84,7 @@ def _thicken_svg_strokes(svg_path: Path, scale: float = 3.0) -> None:
 
         svg_path.write_text(text, encoding="utf-8")
     except Exception as e:
-        print(f"Warning: Could not process SVG: {e}")
+        raise RenderError("Failed to process SVG stroke widths", str(e))
 
 
 def _svg_to_png_cairo(svg_path: Path, png_out: Path, dpi: int = 150) -> None:
@@ -95,13 +109,9 @@ def _svg_to_png_cairo(svg_path: Path, png_out: Path, dpi: int = 150) -> None:
             png_out.write_bytes(png_data)
 
     except Exception as e:
-        print(f"Error converting SVG to PNG: {e}")
-        # Fallback: try without scale
-        cairosvg.svg2png(
-            url=str(svg_path),
-            write_to=str(png_out),
-            dpi=dpi,
-            background_color="white"
+        raise RenderError(
+            f"Failed to convert SVG to PNG: {svg_path.name}",
+            str(e)
         )
 
 
@@ -220,13 +230,11 @@ def render_document_pages(
     doc_dir = raw_dir / doc_uuid
 
     if not doc_dir.exists():
-        print(f"Document directory not found: {doc_dir}")
-        return []
+        raise RenderError(f"Document directory not found: {doc_dir}")
 
     pages = list_rm_pages(doc_dir)
     if not pages:
-        print(f"No .rm files found in {doc_dir}")
-        return []
+        raise RenderError(f"No .rm files found in document {doc_uuid}")
 
     rendered: List[Path] = []
     for idx, page in enumerate(pages, start=1):

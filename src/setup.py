@@ -4,7 +4,7 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Optional
-import stat
+
 import paramiko
 
 from .config import Config

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import stat
-import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..utils import ensure_directory
+from ..errors import SyncError, ConnectionError, AuthenticationError, retry_on_failure
 
 if TYPE_CHECKING:
     import paramiko
@@ -20,6 +20,8 @@ def _sftp_is_dir(sftp: "paramiko.SFTPClient", remote_path: str) -> bool:
         return stat.S_ISDIR(st.st_mode) if st.st_mode is not None else False
     except FileNotFoundError:
         return False
+    except Exception as e:
+        raise SyncError(f"Cannot check remote path: {remote_path}", str(e))
 
 
 def _download_recursive_sftp(
@@ -56,36 +58,50 @@ def pull_from_tablet(
     try:
         import paramiko
     except ImportError:
-        sys.stderr.write(
-            "Paramiko is required. Install with: python3 -m pip install --user -r requirements.txt\n"
+        raise SyncError(
+            "Required dependency missing: paramiko",
+            "Install with: python3 -m pip install --user -r requirements.txt"
         )
-        raise
 
     if not password:
-        sys.exit("Missing password. Provide --password or set RM_PASSWORD env.")
-
-    ensure_directory(dest)
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-    try:
-        client.connect(
-            hostname=host,
-            username=user,
-            password=password,
-            timeout=20,
-            allow_agent=False,
-            look_for_keys=False,
+        raise AuthenticationError(
+            "No password provided",
+            "Set RM_PASSWORD environment variable or use --password"
         )
 
-        sftp = client.open_sftp()
-        try:
-            if not _sftp_is_dir(sftp, remote_path):
-                sys.exit(f"Remote path missing or not a directory: {remote_path}")
-            _download_recursive_sftp(sftp, remote_path.rstrip("/"), dest)
-        finally:
-            sftp.close()
-    finally:
-        client.close()
+    ensure_directory(dest)
 
-    print(f"Pulled raw files to: {dest}")
+    def _do_sync():
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=host,
+                username=user,
+                password=password,
+                timeout=20,
+                allow_agent=False,
+                look_for_keys=False,
+            )
+
+            sftp = client.open_sftp()
+            try:
+                if not _sftp_is_dir(sftp, remote_path):
+                    raise SyncError(
+                        f"Remote path not found: {remote_path}",
+                        "Check that the tablet is accessible and xochitl directory exists"
+                    )
+                _download_recursive_sftp(sftp, remote_path.rstrip("/"), dest)
+            finally:
+                sftp.close()
+        except paramiko.AuthenticationException:
+            raise AuthenticationError("SSH authentication failed", "Check username and password")
+        except (paramiko.SSHException, OSError) as e:
+            raise ConnectionError(host, str(e))
+        finally:
+            client.close()
+
+    # Retry sync operation with backoff
+    retry_on_failure(_do_sync, max_retries=3, operation="tablet sync")
+    print(f"✅ Pulled raw files to: {dest}")

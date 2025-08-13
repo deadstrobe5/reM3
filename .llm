@@ -1,6 +1,6 @@
-# reMarkable Sync Tool
+# reM3 - reMarkable Sync Tool
 
-A Python tool to sync, organize, and export content from reMarkable tablets.
+**reM3** - A Python tool to sync, organize, and export content from reMarkable tablets.
 
 ## Quick Start
 ```bash
@@ -24,6 +24,7 @@ reMarkable/
 │   ├── transcribe/        # Vision AI transcription
 │   │   └── openai.py      # OpenAI Vision API
 │   ├── config.py          # Configuration management
+│   ├── errors.py          # Unified error handling with custom exceptions
 │   ├── setup.py           # Interactive setup
 │   └── utils.py           # Common utilities
 │
@@ -59,6 +60,7 @@ reMarkable/
 - **render/**: Transform .rm files → SVG → PNG/JPEG using rmc and cairosvg
 - **transcribe/**: Send images to AI vision models (OpenAI GPT-4 Vision)
 - **config.py**: Centralized configuration with .env support
+- **errors.py**: Custom exceptions (SyncError, RenderError, TranscribeError) with emoji feedback
 
 ## Configuration
 Environment variables or .env file:
@@ -76,5 +78,7 @@ Environment variables or .env file:
 - Render settings: DPI=200, stroke_scale=2.0, height=2000px, JPEG 95%
 - Modularized main.py - now just a thin CLI orchestrator
 - Logical folder structure: sync/, render/, transcribe/
-- Centralized configuration with generic paths (~/remarkable-sync)
+- Centralized configuration with generic paths (~/reM3)
 - Clean module interfaces with simplified exports
+- Unified error handling with custom exceptions and retry logic
+- Simplified CLI: default command, dry-run support, merged redundant commands

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass
 import base64
@@ -8,8 +7,9 @@ from io import BytesIO
 from PIL import Image
 from pathlib import Path
 
-
 from openai import OpenAI
+
+from ..errors import TranscribeError, require_openai_key
 
 
 TRANSCRIBE_SYSTEM = (
@@ -53,10 +53,7 @@ def _pil_to_data_url(img: Image.Image, fmt: str = "PNG") -> str:
 
 
 def _transcribe_data_url(image_data_url: str, settings: OpenAISettings, attempt: int) -> str:
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set")
-
+    api_key = require_openai_key()
     client = OpenAI(api_key=api_key)
 
     def _looks_like_refusal(s: str) -> bool:
@@ -96,11 +93,16 @@ def _transcribe_data_url(image_data_url: str, settings: OpenAISettings, attempt:
             text = resp.choices[0].message.content or ""
             text = text.strip()
             if not text or _looks_like_refusal(text):
-                raise RuntimeError("refusal or empty response")
+                raise TranscribeError("AI model refused to transcribe or returned empty response")
             return text
-        except Exception:  # noqa: BLE001
+        except Exception as e:
             if attempt >= settings.max_retries:
-                raise
+                if "rate_limit" in str(e).lower():
+                    raise TranscribeError("OpenAI rate limit exceeded", "Try again later or reduce workers")
+                elif "api_key" in str(e).lower():
+                    raise TranscribeError("OpenAI API key invalid", "Check your OPENAI_API_KEY")
+                else:
+                    raise TranscribeError(f"Transcription failed after {settings.max_retries} attempts", str(e))
             _backoff_sleep(attempt, settings.initial_backoff_s)
             attempt += 1
 
@@ -108,9 +110,28 @@ def _transcribe_data_url(image_data_url: str, settings: OpenAISettings, attempt:
 
 
 def transcribe_image_to_text(image_path: Path, settings: OpenAISettings, tile_cols: int = 1) -> str:
+    """Transcribe an image to text using OpenAI Vision API.
+
+    Args:
+        image_path: Path to image file
+        settings: OpenAI API settings
+        tile_cols: Number of vertical tiles (for wide images)
+
+    Returns:
+        Transcribed text
+
+    Raises:
+        TranscribeError: If transcription fails
+    """
+    if not image_path.exists():
+        raise TranscribeError(f"Image file not found: {image_path}")
+
     # If tiling is requested, split into vertical tiles with small overlaps
     if tile_cols and tile_cols > 1:
-        img = Image.open(image_path).convert("RGB")
+        try:
+            img = Image.open(image_path).convert("RGB")
+        except Exception as e:
+            raise TranscribeError(f"Cannot open image: {image_path.name}", str(e))
         w, h = img.size
         overlap = max(10, w // 100)  # ~1% overlap
         tile_w = w // tile_cols

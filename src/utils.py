@@ -1,4 +1,4 @@
-"""Common utility functions for the reMarkable sync tool."""
+"""Common utility functions for reM3 - the reMarkable sync tool."""
 
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
-## ✨ reMarkable sync + organize (+ optional text export)
+## ✨ reM3 - reMarkable sync + organize (+ optional text export)
 
-Mirror your tablet’s folders on your computer and get a quick index. One simple command after install. 
+**reM3** mirrors your tablet's folders on your computer and gets a quick index. One simple command after install.
 
 ### 🌟 Features
 - 🧩 First‑run wizard: prompts for IP/user/password, writes `.env`, can set up SSH keys
@@ -17,9 +17,10 @@ Enable “USB connection” in General → Storage settings
 
 2) Run these commands:
 
+### 🚀 TL;DR (two commands)
 ```bash
 python3 -m pip install --user -r requirements.txt
-python3 main.py go
+python3 main.py
 ```
 
 This will:
@@ -29,13 +30,23 @@ This will:
 - Create `data/index.csv` with document metadata
 - Build `data/organized` mirroring your collections using symlinks
 
-Tip: next time it’s even simpler — just run:
+Tip: next time it's even simpler — just run:
 ```bash
-python3 main.py go
+python3 main.py
+```
+
+Want to see what would happen without doing it? Add `--dry-run`:
+```bash
+python3 main.py --dry-run
 ```
 
 ### 🔧 Advanced (optional)
 Only read this if you want more control.
+
+- Sync everything (pull + index + organize):
+```bash
+python3 main.py sync
+```
 
 - Pull only (refresh `data/raw/` from the tablet):
 ```bash
@@ -55,6 +66,11 @@ python3 main.py organize --clear-dest
 - Organize with copies (instead of symlinks) and include trash:
 ```bash
 python3 main.py organize --copy --include-trash --clear-dest
+```
+
+- See what any command would do without doing it:
+```bash
+python3 main.py sync --dry-run
 ```
 
 ### 📝 Export text (optional)
@@ -77,10 +93,13 @@ python3 main.py export-text --uuid <uuid> --model gpt-4o --workers 1
 
 ### 💡 Tips
 - Keep the tablet awake/unlocked while syncing.
-- For Wi‑Fi, use the tablet’s Wi‑Fi IP.
+- For Wi‑Fi, use the tablet's Wi‑Fi IP.
+- Use `--dry-run` to preview what any command will do.
+- Default data location is `~/reM3/data/` (configurable via `RM_BASE_DIR`).
 
 ### 🧪 Notes
-- Sync/organize are solid.
-- Text export is experimental and may be imperfect on newer `.rm` variants.
+- Sync/organize are solid and well-tested.
+- Text export is experimental - requires OpenAI API key.
+- Error messages include helpful emojis and recovery suggestions.
 
 

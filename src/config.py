@@ -1,4 +1,4 @@
-"""Centralized configuration for the reMarkable sync tool."""
+"""Centralized configuration for reM3 - the reMarkable sync tool."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Optional
 
 @dataclass
 class Config:
-    """Main configuration for the reMarkable sync tool."""
+    """Main configuration for reM3 - the reMarkable sync tool."""
 
     # Connection settings
     host: str = "10.11.99.1"
@@ -18,7 +18,7 @@ class Config:
     password: str = ""
 
     # Base directory - all other paths derive from this
-    base_dir: Path = Path.home() / "remarkable-sync"
+    base_dir: Path = Path.home() / "reM3"
 
     # Remote settings
     remote_path: str = "/home/root/.local/share/remarkable/xochitl/"
@@ -113,12 +113,12 @@ class Config:
             env_path = Path(__file__).resolve().parent.parent / ".env"
 
         lines = [
-            "# reMarkable sync configuration",
+            "# reM3 - reMarkable sync configuration",
             f"RM_HOST={self.host}",
             f"RM_USER={self.user}",
             f"RM_PASSWORD={self.password}",
             "",
-            "# Optional: Change base directory (default: ~/remarkable-sync)",
+            "# Optional: Change base directory (default: ~/reM3)",
             f"# RM_BASE_DIR={self.base_dir}",
             "",
             "# Optional: Rendering settings",
