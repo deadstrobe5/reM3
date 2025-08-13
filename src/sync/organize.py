@@ -33,7 +33,23 @@ def organize_files(
         shutil.rmtree(dest_root)
     ensure_directory(dest_root)
 
-    # Load the catalog
+    # Load catalog data
+    documents, collections = _load_catalog_data(raw_dir)
+
+    # Build collection paths
+    collection_paths = _build_collection_paths(collections, dest_root, include_trash)
+
+    # Organize documents into their destinations
+    organized_paths = _organize_documents(documents, raw_dir, dest_root, collection_paths, include_trash)
+
+    # Print summary
+    _print_organization_summary(documents, organized_paths, dest_root)
+
+    return organized_paths
+
+
+def _load_catalog_data(raw_dir: Path) -> tuple[List[Dict], List[Dict]]:
+    """Load catalog data from catalog.json or build from raw files."""
     catalog_file = raw_dir.parent / "catalog.json"
     if catalog_file.exists():
         with open(catalog_file, 'r', encoding='utf-8') as f:
@@ -43,14 +59,14 @@ def organize_files(
     else:
         # Fallback: build from raw files
         documents, collections = _build_simple_catalog(raw_dir)
+    return documents, collections
 
-    # Build collection hierarchy map
-    collection_map = {}
+
+def _build_collection_paths(collections: List[Dict], dest_root: Path, include_trash: bool) -> Dict[str, Path]:
+    """Build collection hierarchy and create directory structure."""
+    collection_map = {collection["uuid"]: collection for collection in collections}
     collection_paths = {}
-    for collection in collections:
-        collection_map[collection["uuid"]] = collection
 
-    # Resolve collection paths
     def resolve_collection_path(collection_uuid):
         path = []
         current = collection_uuid
@@ -79,8 +95,19 @@ def organize_files(
             ensure_directory(full_path)
             collection_paths[collection["uuid"]] = full_path
 
-    # Organize documents
+    return collection_paths
+
+
+def _organize_documents(
+    documents: List[Dict],
+    raw_dir: Path,
+    dest_root: Path,
+    collection_paths: Dict[str, Path],
+    include_trash: bool
+) -> Dict[str, str]:
+    """Organize individual documents into their destination paths."""
     organized_paths = {}
+
     for doc in documents:
         if doc.get("is_trashed") and not include_trash:
             continue
@@ -95,50 +122,68 @@ def organize_files(
         if not src_path:
             continue
 
-        # Determine destination based on parent
-        if parent and parent in collection_paths:
-            # Document belongs to a collection
-            dest_dir = collection_paths[parent]
-        elif parent == "trash":
-            if not include_trash:
-                continue
-            dest_dir = dest_root / "trash"
-            ensure_directory(dest_dir)
-        else:
-            # Root level document
-            dest_dir = dest_root
+        # Determine destination directory
+        dest_dir = _determine_destination_dir(parent, collection_paths, dest_root, include_trash)
+        if not dest_dir:
+            continue
 
-        # Create final destination path
-        clean_title = sanitize_name(title)
-        if doc_type == "notebook":
-            dest_path = dest_dir / clean_title
-        else:
-            ext = ".pdf" if doc_type == "pdf" else ".epub" if doc_type == "epub" else ""
-            dest_path = dest_dir / f"{clean_title}{ext}"
-
-        # Copy the file/directory
-        try:
-            if src_path.is_dir():
-                if dest_path.exists():
-                    shutil.rmtree(dest_path)
-                shutil.copytree(src_path, dest_path)
-            else:
-                if dest_path.exists():
-                    dest_path.unlink()
-                shutil.copy2(src_path, dest_path)
+        # Create final destination path and copy file
+        dest_path = _create_destination_path(dest_dir, title, doc_type)
+        if _copy_document(src_path, dest_path, title):
             organized_paths[uuid] = str(dest_path)
-        except Exception as e:
-            print(f"Warning: Failed to organize {title}: {e}")
 
-    # Summary
+    return organized_paths
+
+
+def _determine_destination_dir(parent: str, collection_paths: Dict[str, Path], dest_root: Path, include_trash: bool) -> Optional[Path]:
+    """Determine the destination directory for a document based on its parent."""
+    if parent and parent in collection_paths:
+        return collection_paths[parent]
+    elif parent == "trash":
+        if not include_trash:
+            return None
+        trash_dir = dest_root / "trash"
+        ensure_directory(trash_dir)
+        return trash_dir
+    else:
+        return dest_root
+
+
+def _create_destination_path(dest_dir: Path, title: str, doc_type: str) -> Path:
+    """Create the final destination path for a document."""
+    clean_title = sanitize_name(title)
+    if doc_type == "notebook":
+        return dest_dir / clean_title
+    else:
+        ext = ".pdf" if doc_type == "pdf" else ".epub" if doc_type == "epub" else ""
+        return dest_dir / f"{clean_title}{ext}"
+
+
+def _copy_document(src_path: Path, dest_path: Path, title: str) -> bool:
+    """Copy a document from source to destination path."""
+    try:
+        if src_path.is_dir():
+            if dest_path.exists():
+                shutil.rmtree(dest_path)
+            shutil.copytree(src_path, dest_path)
+        else:
+            if dest_path.exists():
+                dest_path.unlink()
+            shutil.copy2(src_path, dest_path)
+        return True
+    except Exception as e:
+        print(f"Warning: Failed to organize {title}: {e}")
+        return False
+
+
+def _print_organization_summary(documents: List[Dict], organized_paths: Dict[str, str], dest_root: Path):
+    """Print summary of organization results."""
     doc_count = len([doc for doc in documents if not doc.get("is_trashed", False)])
     organized_count = len(organized_paths)
 
     print(f"Organized {organized_count}/{doc_count} documents")
     print(f"Destination: {dest_root}")
     print("(Files were copied for clean access)")
-
-    return organized_paths
 
 
 def _build_simple_catalog(raw_dir: Path) -> tuple[List[Dict], List[Dict]]:

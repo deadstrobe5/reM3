@@ -18,11 +18,17 @@ reMarkable/
 │   ├── sync/              # Extract from reMarkable
 │   │   ├── pull.py        # SFTP operations
 │   │   ├── index.py       # Build document index
-│   │   └── organize.py    # Create collection structure
+│   │   └── organize.py    # Create collection structure (refactored for lower complexity)
 │   ├── render/            # Transform to images
 │   │   └── rm_to_image.py # Convert .rm files to images
 │   ├── transcribe/        # Vision AI transcription
 │   │   └── openai.py      # OpenAI Vision API
+│   ├── cli/               # Modular CLI interface
+│   │   ├── __init__.py    # CLI module exports
+│   │   ├── progress.py    # ProgressTracker for UI
+│   │   ├── transcription.py # TranscriptionManager for cost safeguards
+│   │   ├── enhanced_cli.py # EnhancedCLI workflow orchestration
+│   │   └── workflows.py   # High-level workflow functions
 │   ├── config.py          # Configuration management
 │   ├── errors.py          # Unified error handling with custom exceptions
 │   ├── setup.py           # Interactive setup
@@ -61,6 +67,11 @@ reMarkable/
 - **sync/**: Extract from reMarkable (pull via SFTP, index, organize collections)
 - **render/**: Transform .rm files → SVG → PNG/JPEG using rmc and cairosvg
 - **transcribe/**: Send images to AI vision models (OpenAI GPT-4 Vision)
+- **cli/**: Modular CLI interface with progress tracking and transcription management
+  - **progress.py**: ProgressTracker for rich UI feedback
+  - **transcription.py**: TranscriptionManager with cost safeguards
+  - **enhanced_cli.py**: Main workflow orchestration
+  - **workflows.py**: High-level workflow functions
 - **config.py**: Centralized configuration with .env support
 - **errors.py**: Custom exceptions (SyncError, RenderError, TranscribeError) with emoji feedback
 
@@ -84,8 +95,11 @@ Environment variables or .env file:
 - Preserve tablet structure: exact collection hierarchy in organized folder
 - Render settings: DPI=200, stroke_scale=2.0, height=2000px, JPEG 95%
 - Modularized main.py - now just a thin CLI orchestrator
-- Logical folder structure: sync/, render/, transcribe/
+- Logical folder structure: sync/, render/, transcribe/, cli/
+- Refactored CLI: broke large cli.py into modular components (progress, transcription, workflows)
+- Reduced cyclomatic complexity: organize.py refactored into smaller focused functions
 - Centralized configuration with generic paths (~/reM3)
 - Clean module interfaces with simplified exports
 - Unified error handling with custom exceptions and retry logic
 - Simplified CLI: default command, dry-run support, merged redundant commands
+- Zero diagnostics: all type errors, unused imports, and warnings resolved
