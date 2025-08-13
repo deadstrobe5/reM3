@@ -18,7 +18,7 @@ class Config:
     password: str = ""
 
     # Base directory - all other paths derive from this
-    base_dir: Path = Path.home() / "reM3"
+    base_dir: Path = Path(__file__).resolve().parent.parent
 
     # Remote settings
     remote_path: str = "/home/root/.local/share/remarkable/xochitl/"
@@ -57,26 +57,40 @@ class Config:
 
     @property
     def index_file(self) -> Path:
-        """Index CSV file path."""
-        return self.data_dir / "index.csv"
+        """Catalog JSON file path."""
+        return self.data_dir / "catalog.json"
 
     @property
     def text_dir(self) -> Path:
         """Text export directory path."""
-        return self.data_dir / "text" / "openai"
+        return self.data_dir / "text"
+
+    @property
+    def temp_dir(self) -> Path:
+        """Temporary files directory path."""
+        return self.data_dir / "temp"
+
+    @property
+    def images_dir(self) -> Path:
+        """Rendered images directory path."""
+        return self.data_dir / "images"
 
     @classmethod
     def load(cls, env_path: Optional[Path] = None) -> Config:
         """Load configuration from environment and .env file.
 
-        Priority: Environment variables > .env file > defaults
+        Priority: Environment variables > .env file > auto-detected project directory
         """
         config = cls()
 
+        # Auto-detect project directory (where this script is located)
+        project_dir = Path(__file__).resolve().parent.parent
+        config.base_dir = project_dir
+
         # Try to find .env file
         if env_path is None:
-            # Look for .env in script directory
-            env_path = Path(__file__).resolve().parent.parent / ".env"
+            # Look for .env in project directory
+            env_path = project_dir / ".env"
 
         # Load .env file if it exists
         env_vars = {}
@@ -93,7 +107,7 @@ class Config:
         config.user = os.environ.get("RM_USER", env_vars.get("RM_USER", config.user))
         config.password = os.environ.get("RM_PASSWORD", env_vars.get("RM_PASSWORD", config.password))
 
-        # Base directory override
+        # Base directory override (only if explicitly set)
         if base := os.environ.get("RM_BASE_DIR", env_vars.get("RM_BASE_DIR")):
             config.base_dir = Path(base).expanduser()
 
@@ -134,8 +148,15 @@ class Config:
 
     def ensure_directories(self) -> None:
         """Create all necessary directories."""
-        for path in [self.data_dir, self.raw_dir, self.organized_dir, self.text_dir]:
+        for path in [self.data_dir, self.raw_dir, self.organized_dir, self.text_dir, self.temp_dir, self.images_dir]:
             path.mkdir(parents=True, exist_ok=True)
+
+    def cleanup_temp(self) -> None:
+        """Clean up temporary files."""
+        import shutil
+        if self.temp_dir.exists():
+            shutil.rmtree(self.temp_dir)
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Global configuration instance

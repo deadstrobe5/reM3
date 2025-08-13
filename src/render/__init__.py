@@ -34,7 +34,7 @@ def render_document(doc_uuid: str, raw_dir, output_dir=None, format='jpeg'):
     config = get_config()
 
     if output_dir is None:
-        output_dir = Path(config.base_dir) / "data" / "temp" / doc_uuid
+        output_dir = config.temp_dir / doc_uuid
 
     settings = RenderSettings(
         dpi=config.render_dpi,

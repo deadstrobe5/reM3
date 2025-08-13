@@ -1,99 +1,23 @@
-"""Organize operations for recreating collection structure from raw files."""
+"""Clean organize operations for creating readable folder structure."""
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional
 
-from ..utils import read_json, ensure_directory, sanitize_name, choose_unique_path
-
-
-def _build_nodes(raw_dir: Path) -> Dict[str, dict]:
-    """Build a dictionary of all documents and collections from raw files.
-
-    Args:
-        raw_dir: Directory containing raw files from tablet
-
-    Returns:
-        Dictionary mapping UUID to node metadata
-    """
-    nodes: Dict[str, dict] = {}
-    for meta_path in raw_dir.glob("*.metadata"):
-        uuid = meta_path.stem
-        meta = read_json(meta_path) or {}
-        nodes[uuid] = {
-            "uuid": uuid,
-            "name": meta.get("visibleName", ""),
-            "type": meta.get("type", ""),
-            "parent": meta.get("parent", ""),
-        }
-    return nodes
-
-
-def _resolve_collection_path(nodes: Dict[str, dict], uuid: str) -> Tuple[List[str], bool]:
-    """Resolve the full collection path for a document.
-
-    Args:
-        nodes: Dictionary of all nodes
-        uuid: Document UUID
-
-    Returns:
-        Tuple of (path segments list, is_in_trash bool)
-    """
-    segs = []
-    cur = nodes.get(uuid)
-    is_trash = False
-
-    while cur is not None:
-        parent = cur.get("parent") or ""
-        if parent == "trash":
-            is_trash = True
-            break
-        segs.append(sanitize_name(cur.get("name") or cur.get("uuid") or uuid))
-        if not parent:
-            break
-        cur = nodes.get(parent)
-
-    return list(reversed(segs[1:])), is_trash
-
-
-def _link_or_copy(src: Path, dst: Path, do_copy: bool) -> None:
-    """Create a symlink or copy from source to destination.
-
-    Args:
-        src: Source path
-        dst: Destination path
-        do_copy: If True, copy instead of symlink
-    """
-    if dst.exists() or dst.is_symlink():
-        return
-
-    ensure_directory(dst.parent)
-
-    if do_copy:
-        if src.is_dir():
-            # For notebooks, copy the directory structure
-            shutil.copytree(src, dst)
-        else:
-            shutil.copy2(src, dst)
-    else:
-        # Create relative symlink for better portability
-        try:
-            dst.symlink_to(src.relative_to(dst.parent))
-        except ValueError:
-            # Fallback to absolute if relative path fails
-            dst.symlink_to(src.resolve())
+from ..utils import read_json, ensure_directory, sanitize_name
 
 
 def organize_files(
     raw_dir: Path,
     dest_root: Path,
-    do_copy: bool = False,
+    do_copy: bool = True,
     include_trash: bool = False,
-    clear_dest: bool = False
+    clear_dest: bool = True
 ) -> Dict[str, str]:
-    """Organize raw files into a collection structure.
+    """Organize raw files into a clean folder structure.
 
     Args:
         raw_dir: Directory containing raw files from tablet
@@ -109,101 +33,155 @@ def organize_files(
         shutil.rmtree(dest_root)
     ensure_directory(dest_root)
 
-    nodes = _build_nodes(raw_dir)
-    organized_paths = {}
+    # Load the catalog
+    catalog_file = raw_dir.parent / "catalog.json"
+    if catalog_file.exists():
+        with open(catalog_file, 'r', encoding='utf-8') as f:
+            catalog = json.load(f)
+        documents = catalog.get("documents", [])
+        collections = catalog.get("collections", [])
+    else:
+        # Fallback: build from raw files
+        documents, collections = _build_simple_catalog(raw_dir)
 
-    # Create folders for collections and documents
-    for uuid, node in nodes.items():
-        node_type = node.get("type", "")
+    # Build collection hierarchy map
+    collection_map = {}
+    collection_paths = {}
+    for collection in collections:
+        collection_map[collection["uuid"]] = collection
 
-        # Skip if in trash and not including trash
-        path_segs, is_trash = _resolve_collection_path(nodes, uuid)
-        if is_trash and not include_trash:
+    # Resolve collection paths
+    def resolve_collection_path(collection_uuid):
+        path = []
+        current = collection_uuid
+        visited = set()
+
+        while current and current in collection_map and current not in visited:
+            visited.add(current)
+            col = collection_map[current]
+            if col.get("parent") == "trash":
+                return None  # Skip trashed collections
+            path.insert(0, sanitize_name(col["name"]))
+            current = col.get("parent", "")
+
+        return path
+
+    # Create collection directories
+    for collection in collections:
+        if collection.get("parent") == "trash" and not include_trash:
             continue
 
-        # Build destination path
-        if is_trash:
-            dest_path = dest_root / "trash" / "/".join(path_segs)
-        elif path_segs:
-            dest_path = dest_root / "/".join(path_segs)
+        col_path = resolve_collection_path(collection["uuid"])
+        if col_path:
+            full_path = dest_root
+            for segment in col_path:
+                full_path = full_path / segment
+            ensure_directory(full_path)
+            collection_paths[collection["uuid"]] = full_path
+
+    # Organize documents
+    organized_paths = {}
+    for doc in documents:
+        if doc.get("is_trashed") and not include_trash:
+            continue
+
+        uuid = doc["uuid"]
+        title = doc["title"]
+        doc_type = doc.get("type", "unknown")
+        parent = doc.get("parent", "")
+
+        # Find source file
+        src_path = _find_source_file(raw_dir, uuid, doc_type)
+        if not src_path:
+            continue
+
+        # Determine destination based on parent
+        if parent and parent in collection_paths:
+            # Document belongs to a collection
+            dest_dir = collection_paths[parent]
+        elif parent == "trash":
+            if not include_trash:
+                continue
+            dest_dir = dest_root / "trash"
+            ensure_directory(dest_dir)
         else:
-            dest_path = dest_root / sanitize_name(node.get("name") or uuid)
+            # Root level document
+            dest_dir = dest_root
 
-        # Make path unique if needed
-        dest_path = choose_unique_path(dest_path)
+        # Create final destination path
+        clean_title = sanitize_name(title)
+        if doc_type == "notebook":
+            dest_path = dest_dir / clean_title
+        else:
+            ext = ".pdf" if doc_type == "pdf" else ".epub" if doc_type == "epub" else ""
+            dest_path = dest_dir / f"{clean_title}{ext}"
 
-        # Link or copy based on type
-        if node_type == "DocumentType":
-            # Handle notebooks (directories) and regular documents
-            src_dir = raw_dir / uuid
-            if src_dir.is_dir():
-                # Notebook with .rm files
-                _link_or_copy(src_dir, dest_path, do_copy)
-                organized_paths[uuid] = str(dest_path)
+        # Copy the file/directory
+        try:
+            if src_path.is_dir():
+                if dest_path.exists():
+                    shutil.rmtree(dest_path)
+                shutil.copytree(src_path, dest_path)
             else:
-                # Check for PDF/EPUB files
-                for ext in [".pdf", ".epub"]:
-                    src_file = raw_dir / f"{uuid}{ext}"
-                    if src_file.exists():
-                        dst_file = dest_path.with_suffix(ext)
-                        dst_file = choose_unique_path(dst_file)
-                        _link_or_copy(src_file, dst_file, do_copy)
-                        organized_paths[uuid] = str(dst_file)
-                        break
-
-        elif node_type == "CollectionType":
-            # Just create the directory for collections
-            ensure_directory(dest_path)
+                if dest_path.exists():
+                    dest_path.unlink()
+                shutil.copy2(src_path, dest_path)
             organized_paths[uuid] = str(dest_path)
+        except Exception as e:
+            print(f"Warning: Failed to organize {title}: {e}")
 
     # Summary
-    doc_count = sum(1 for n in nodes.values() if n.get("type") == "DocumentType")
-    col_count = sum(1 for n in nodes.values() if n.get("type") == "CollectionType")
+    doc_count = len([doc for doc in documents if not doc.get("is_trashed", False)])
+    organized_count = len(organized_paths)
 
-    print(f"Organized {doc_count} documents and {col_count} collections")
+    print(f"Organized {organized_count}/{doc_count} documents")
     print(f"Destination: {dest_root}")
-    if do_copy:
-        print("(Files were copied)")
-    else:
-        print("(Created symlinks)")
+    print("(Files were copied for clean access)")
 
     return organized_paths
 
 
-def _find_organized_path(raw_dir: Path, dest_root: Path, uuid: str) -> Optional[Path]:
-    """Find the organized path for a document UUID.
+def _build_simple_catalog(raw_dir: Path) -> tuple[List[Dict], List[Dict]]:
+    """Build simple catalog from raw files as fallback."""
 
-    Args:
-        raw_dir: Directory containing raw files
-        dest_root: Root of organized structure
-        uuid: Document UUID
+    documents = []
+    collections = []
 
-    Returns:
-        Path to organized document or None if not found
-    """
-    nodes = _build_nodes(raw_dir)
-    node = nodes.get(uuid)
+    for meta_path in raw_dir.glob("*.metadata"):
+        uuid = meta_path.stem
+        meta = read_json(meta_path) or {}
+        content = read_json(raw_dir / f"{uuid}.content") or {}
 
-    if not node:
-        return None
+        if meta.get("type") == "CollectionType":
+            collections.append({
+                "uuid": uuid,
+                "name": meta.get("visibleName", "Untitled Collection"),
+                "is_trashed": meta.get("parent") == "trash"
+            })
+        else:
+            documents.append({
+                "uuid": uuid,
+                "title": meta.get("visibleName", "Untitled Document"),
+                "type": content.get("fileType", "unknown"),
+                "pages": content.get("pageCount", 0),
+                "is_trashed": meta.get("parent") == "trash"
+            })
 
-    path_segs, is_trash = _resolve_collection_path(nodes, uuid)
+    return documents, collections
 
-    if is_trash:
-        base_path = dest_root / "trash" / "/".join(path_segs)
-    elif path_segs:
-        base_path = dest_root / "/".join(path_segs)
+
+def _find_source_file(raw_dir: Path, uuid: str, doc_type: str) -> Optional[Path]:
+    """Find the source file for a document."""
+    if doc_type == "notebook":
+        # Notebooks are directories
+        notebook_dir = raw_dir / uuid
+        if notebook_dir.is_dir():
+            return notebook_dir
     else:
-        base_path = dest_root / sanitize_name(node.get("name") or uuid)
-
-    # Check if it exists (could be directory or file with extension)
-    if base_path.exists():
-        return base_path
-
-    # Check for document files
-    for ext in [".pdf", ".epub"]:
-        doc_path = base_path.with_suffix(ext)
-        if doc_path.exists():
-            return doc_path
+        # PDFs and EPUBs are files
+        for ext in [".pdf", ".epub"]:
+            file_path = raw_dir / f"{uuid}{ext}"
+            if file_path.exists():
+                return file_path
 
     return None

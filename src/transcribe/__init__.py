@@ -1,5 +1,6 @@
 """Transcription operations using AI vision models."""
 
+from pathlib import Path
 from .openai import (
     OpenAISettings,
     transcribe_image_to_text,
@@ -39,6 +40,9 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Get document name for better file organization
+    doc_name = _get_document_name(doc_uuid, config.index_file)
+
     # First render the document to images
     image_paths = render_document(doc_uuid, raw_path)
 
@@ -64,9 +68,58 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
 
     # Save combined transcription
     if transcriptions:
-        output_file = output_dir / f"{doc_uuid}.txt"
-        output_file.write_text("\n\n---\n\n".join(transcriptions), encoding="utf-8")
+        # Use document name for better organization, fallback to UUID
+        filename = _sanitize_filename(doc_name) if doc_name != f"Document {doc_uuid[:8]}..." else doc_uuid
+        output_file = output_dir / f"{filename}.txt"
+
+        # Add metadata header
+        header = f"# {doc_name}\n# UUID: {doc_uuid}\n# Pages: {len(transcriptions)}\n# Model: {model}\n\n"
+        combined_text = header + "\n\n---\n\n".join(transcriptions)
+
+        output_file.write_text(combined_text, encoding="utf-8")
         print(f"✅ Transcribed to: {output_file}")
+
+        # Cleanup temp files for this document
+        _cleanup_temp_files(doc_uuid, config.temp_dir)
+
         return output_file
 
+    # Cleanup temp files even if transcription failed
+    _cleanup_temp_files(doc_uuid, config.temp_dir)
     return None
+
+
+def _get_document_name(doc_uuid: str, index_file: Path) -> str:
+    """Get document name from index file."""
+    try:
+        import csv
+        with open(index_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["uuid"] == doc_uuid:
+                    return row["visibleName"]
+    except:
+        pass
+    return f"Document {doc_uuid[:8]}..."
+
+
+def _sanitize_filename(name: str) -> str:
+    """Sanitize filename by removing invalid characters."""
+    import re
+    # Replace invalid characters with underscores
+    sanitized = re.sub(r'[<>:"/\\|?*]', '_', name)
+    # Remove multiple underscores and trim
+    sanitized = re.sub(r'_+', '_', sanitized).strip('_')
+    # Limit length
+    return sanitized[:100] if len(sanitized) > 100 else sanitized
+
+
+def _cleanup_temp_files(doc_uuid: str, temp_dir: Path) -> None:
+    """Clean up temporary files for a specific document."""
+    import shutil
+    doc_temp_dir = temp_dir / doc_uuid
+    if doc_temp_dir.exists():
+        try:
+            shutil.rmtree(doc_temp_dir)
+        except Exception as e:
+            print(f"Warning: Could not cleanup temp files for {doc_uuid}: {e}")

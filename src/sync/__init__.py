@@ -1,11 +1,12 @@
 """Sync operations for pulling and organizing reMarkable content."""
 
-from .pull import pull_from_tablet
+from .pull import pull_from_tablet, SyncStats
 from .index import build_index, load_index, find_document, list_documents
 from .organize import organize_files
 
 __all__ = [
     'pull_from_tablet',
+    'SyncStats',
     'build_index',
     'load_index',
     'find_document',

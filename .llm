@@ -30,23 +30,25 @@ reMarkable/
 │
 └── data/                  # Local data (gitignored)
     ├── raw/               # Raw files from tablet
-    ├── organized/         # Organized with symlinks
-    ├── index.csv          # Document metadata
+    ├── organized/         # Exact tablet structure (copies)
+    ├── catalog.json       # Searchable document catalog
     └── text/              # Exported text files
 ```
 
 ## Key Commands
-- `pull` - Download raw files from tablet via SFTP
-- `index` - Build CSV index from raw files
-- `organize` - Create folder structure with symlinks
+- `pull` - Smart sync: only download new/changed files from tablet
+- `index` - Build searchable JSON catalog from raw files
+- `organize` - Preserve exact tablet collection structure
+- `browse` - Search, filter and view documents in rich CLI
 - `export-text` - Convert documents to text using OpenAI
 - `go` - Do everything automatically
 
 ## Data Flow
-1. **Pull**: Tablet → `data/raw/` (via SFTP)
-2. **Index**: `data/raw/` → `data/index.csv`
-3. **Organize**: `data/raw/` → `data/organized/` (symlinks)
-4. **Export**: `data/raw/` → render → OpenAI → `data/text/`
+1. **Pull**: Tablet → `data/raw/` (smart sync, only changed files)
+2. **Index**: `data/raw/` → `data/catalog.json` (searchable metadata)
+3. **Organize**: `data/raw/` → `data/organized/` (exact tablet structure)
+4. **Browse**: Search and filter documents with rich CLI
+5. **Export**: `data/raw/` → render → OpenAI → `data/text/`
 
 ## File Types
 - `{uuid}.metadata` - Document metadata (JSON)
@@ -72,9 +74,14 @@ Environment variables or .env file:
 ## Important Paths
 - Raw storage renamed from "xochitl" to "raw" for clarity
 - All paths use `Path` objects from pathlib
-- Symlinks are relative for portability
+- Smart sync preserves file timestamps for proper change detection
+- Organized structure uses copies (not symlinks) for better compatibility
 
 ## Recent Optimizations
+- Smart sync: only downloads new/changed files (much faster subsequent syncs)
+- JSON catalog: replaced low-level CSV with searchable document metadata
+- Browse command: rich CLI for searching/filtering documents
+- Preserve tablet structure: exact collection hierarchy in organized folder
 - Render settings: DPI=200, stroke_scale=2.0, height=2000px, JPEG 95%
 - Modularized main.py - now just a thin CLI orchestrator
 - Logical folder structure: sync/, render/, transcribe/

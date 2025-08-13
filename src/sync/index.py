@@ -2,112 +2,161 @@
 
 from __future__ import annotations
 
-import csv
+import json
 from pathlib import Path
 from typing import List, Dict, Any
+from datetime import datetime
 
 from ..utils import read_json, ensure_directory
 
 
-def build_index(raw_dir: Path, out_csv: Path) -> None:
-    """Build an index CSV file from raw reMarkable files.
+def build_index(raw_dir: Path, out_file: Path) -> None:
+    """Build a readable JSON catalog from raw reMarkable files.
 
     Args:
         raw_dir: Directory containing raw files from tablet
-        out_csv: Output CSV file path
+        out_file: Output JSON file path
     """
-    ensure_directory(out_csv.parent)
+    ensure_directory(out_file.parent)
 
-    rows = []
+    # Build document list
+    documents = []
+    collections = []
+
     for meta_path in sorted(raw_dir.glob("*.metadata")):
         uuid = meta_path.stem
         meta = read_json(meta_path) or {}
         content = read_json(raw_dir / f"{uuid}.content") or {}
-        rows.append(
-            {
+
+        doc_type = meta.get("type", "")
+        if doc_type == "CollectionType":
+            collections.append({
                 "uuid": uuid,
-                "name": meta.get("visibleName", ""),
-                "type": meta.get("type", ""),
+                "name": meta.get("visibleName", "Untitled Collection"),
                 "parent": meta.get("parent", ""),
-                "modified": meta.get("lastModified", ""),
+                "modified": int(meta.get("lastModified", 0)) if meta.get("lastModified") else 0,
                 "pinned": meta.get("pinned", False),
-                "file_type": content.get("fileType", ""),
-                "page_count": content.get("pageCount", 0),
-            }
-        )
+            })
+        else:
+            documents.append({
+                "uuid": uuid,
+                "title": meta.get("visibleName", "Untitled Document"),
+                "type": content.get("fileType", "unknown"),
+                "parent": meta.get("parent", ""),
+                "modified": int(meta.get("lastModified", 0)) if meta.get("lastModified") else 0,
+                "pinned": meta.get("pinned", False),
+                "pages": content.get("pageCount", 0),
+                "is_trashed": meta.get("parent") == "trash",
+            })
 
-    # Write CSV
-    with out_csv.open("w", encoding="utf-8", newline="") as f:
-        if rows:
-            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-            writer.writeheader()
-            writer.writerows(rows)
+    # Build organized structure
+    catalog = {
+        "generated_at": datetime.now().isoformat(),
+        "total_documents": len(documents),
+        "total_collections": len(collections),
+        "documents": documents,
+        "collections": collections,
+        "stats": {
+            "notebooks": len([d for d in documents if d["type"] == "notebook"]),
+            "pdfs": len([d for d in documents if d["type"] == "pdf"]),
+            "epubs": len([d for d in documents if d["type"] == "epub"]),
+            "trashed": len([d for d in documents if d["is_trashed"]]),
+            "total_pages": sum(d["pages"] for d in documents),
+        }
+    }
 
-    print(f"Index created: {out_csv} ({len(rows)} entries)")
+    # Write JSON
+    with out_file.open("w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2, ensure_ascii=False)
+
+    print(f"Catalog created: {out_file} ({len(documents)} documents, {len(collections)} collections)")
 
 
-def load_index(index_csv: Path) -> List[Dict[str, Any]]:
-    """Load index from CSV file.
+def load_index(index_file: Path) -> Dict[str, Any]:
+    """Load catalog from JSON file.
 
     Args:
-        index_csv: Path to index CSV file
+        index_file: Path to catalog JSON file
 
     Returns:
-        List of document metadata dictionaries
+        Catalog dictionary
     """
-    if not index_csv.exists():
-        return []
+    if not index_file.exists():
+        return {"documents": [], "collections": [], "stats": {}}
 
-    rows = []
-    with index_csv.open("r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            # Convert numeric fields
-            if "page_count" in row:
-                try:
-                    row["page_count"] = int(row["page_count"])
-                except (ValueError, TypeError):
-                    row["page_count"] = 0
-
-            # Convert boolean fields
-            if "pinned" in row:
-                row["pinned"] = row["pinned"].lower() in ("true", "1", "yes")
-
-            rows.append(row)
-
-    return rows
+    with index_file.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def find_document(index_csv: Path, uuid: str) -> Dict[str, Any] | None:
-    """Find a document by UUID in the index.
+def find_document(index_file: Path, uuid: str) -> Dict[str, Any] | None:
+    """Find a document by UUID in the catalog.
 
     Args:
-        index_csv: Path to index CSV file
+        index_file: Path to catalog JSON file
         uuid: Document UUID to find
 
     Returns:
         Document metadata or None if not found
     """
-    index = load_index(index_csv)
-    for doc in index:
+    catalog = load_index(index_file)
+    for doc in catalog.get("documents", []):
         if doc.get("uuid") == uuid:
             return doc
     return None
 
 
-def list_documents(index_csv: Path, doc_type: str | None = None) -> List[Dict[str, Any]]:
-    """List documents from the index, optionally filtered by type.
+def list_documents(index_file: Path, doc_type: str | None = None, include_trashed: bool = False) -> List[Dict[str, Any]]:
+    """List documents from the catalog, optionally filtered by type.
 
     Args:
-        index_csv: Path to index CSV file
-        doc_type: Optional document type filter (e.g., "DocumentType", "CollectionType")
+        index_file: Path to catalog JSON file
+        doc_type: Optional document type filter (e.g., "notebook", "pdf", "epub")
+        include_trashed: Whether to include trashed documents
 
     Returns:
         List of document metadata dictionaries
     """
-    index = load_index(index_csv)
+    catalog = load_index(index_file)
+    documents = catalog.get("documents", [])
+
+    if not include_trashed:
+        documents = [doc for doc in documents if not doc.get("is_trashed", False)]
 
     if doc_type:
-        return [doc for doc in index if doc.get("type") == doc_type]
+        documents = [doc for doc in documents if doc.get("type") == doc_type]
 
-    return index
+    return documents
+
+
+def get_catalog_stats(index_file: Path) -> Dict[str, Any]:
+    """Get quick statistics from the catalog.
+
+    Args:
+        index_file: Path to catalog JSON file
+
+    Returns:
+        Statistics dictionary
+    """
+    catalog = load_index(index_file)
+    return catalog.get("stats", {})
+
+
+def search_documents(index_file: Path, query: str) -> List[Dict[str, Any]]:
+    """Search documents by title.
+
+    Args:
+        index_file: Path to catalog JSON file
+        query: Search query
+
+    Returns:
+        List of matching documents
+    """
+    documents = list_documents(index_file)
+    query_lower = query.lower()
+
+    matches = []
+    for doc in documents:
+        if query_lower in doc.get("title", "").lower():
+            matches.append(doc)
+
+    return sorted(matches, key=lambda d: d.get("modified", 0), reverse=True)

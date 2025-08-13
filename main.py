@@ -3,13 +3,16 @@
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
+from typing import List
 
 from src.config import get_config
+from src.cli import run_enhanced_workflow, run_enhanced_transcription, show_transcription_menu
 
 
 def cmd_pull(args: argparse.Namespace) -> None:
-    """Pull raw files from tablet."""
+    """Pull raw files from tablet with smart sync."""
     from src.sync import pull_from_tablet
     from src.errors import handle_error
 
@@ -18,14 +21,17 @@ def cmd_pull(args: argparse.Namespace) -> None:
     user = args.user or config.user
     password = args.password or config.password
     dest = Path(args.dest) if args.dest else config.raw_dir
+    force_sync = getattr(args, 'force_sync', False)
 
     # Check for dry run
     if getattr(args, 'dry_run', False):
-        print(f"🔍 DRY RUN - would pull from {user}@{host} to {dest}")
+        sync_mode = "full sync" if force_sync else "smart sync"
+        print(f"🔍 DRY RUN - would run {sync_mode} from {user}@{host} to {dest}")
         return
 
     try:
-        pull_from_tablet(host, user, password or "", dest)
+        stats = pull_from_tablet(host, user, password or "", dest, force=force_sync)
+        print(f"📊 Sync stats: {stats}")
     except Exception as e:
         handle_error(e, "pull")
 
@@ -100,10 +106,13 @@ def cmd_sync(args: argparse.Namespace) -> None:
     organized_dir = Path(args.organized_dest) if hasattr(args, 'organized_dest') and args.organized_dest else config.organized_dir
     index_out = Path(args.index_out) if hasattr(args, 'index_out') and args.index_out else config.index_file
 
-    # Check for dry run
+    # Check for dry run and force sync
     dry_run = getattr(args, 'dry_run', False)
+    force_sync = getattr(args, 'force_sync', False)
+
     if dry_run:
-        print(f"🔍 DRY RUN - would sync to: {raw_dir}")
+        sync_mode = "full sync" if force_sync else "smart sync"
+        print(f"🔍 DRY RUN - would run {sync_mode} to: {raw_dir}")
         print(f"   Host: {host}")
         print(f"   User: {user}")
         print(f"   Raw: {raw_dir}")
@@ -113,8 +122,9 @@ def cmd_sync(args: argparse.Namespace) -> None:
 
     try:
         # Pull
-        print(f"🔌 Connecting to {user}@{host}...")
-        cmd_pull(argparse.Namespace(host=host, user=user, password=password, dest=str(raw_dir), dry_run=False))
+        sync_mode = "🔄 Smart sync" if not force_sync else "🔄 Full sync"
+        print(f"🔌 {sync_mode} from {user}@{host}...")
+        cmd_pull(argparse.Namespace(host=host, user=user, password=password, dest=str(raw_dir), force_sync=force_sync, dry_run=False))
 
         # Index
         print("📇 Building index...")
@@ -137,43 +147,22 @@ def cmd_sync(args: argparse.Namespace) -> None:
         handle_error(e, "sync pipeline")
 
 
+def cmd_help(args: argparse.Namespace) -> None:
+    """Show detailed help."""
+    from src.cli import create_enhanced_cli
+    cli = create_enhanced_cli()
+    cli.show_quick_help()
+
+
 def cmd_go(args: argparse.Namespace) -> None:
-    """One command to rule them all: setup if needed, then sync."""
-    from src.setup import interactive
-    from src.errors import handle_error
+    """One command to rule them all: setup if needed, then sync with enhanced UI."""
+    dry_run = getattr(args, 'dry_run', False)
+    force_sync = getattr(args, 'force_sync', False)
 
-    print("🚀 Starting reMarkable sync…")
-
-    # Check for .env file and run setup if needed
-    env_path = Path(__file__).resolve().parent / ".env"
-    if not env_path.exists():
-        print("No configuration found. Running first-time setup...")
-        try:
-            interactive()
-        except Exception as e:
-            handle_error(e, "setup")
-            return
-
-    # Reload config after potential setup
-    from src.config import reset_config
-    reset_config()
-    config = get_config()
-
-    # Ensure directories exist
-    config.ensure_directories()
-
-    # Run the sync pipeline
-    cmd_sync(argparse.Namespace(
-        host=None,
-        user=None,
-        password=None,
-        dest=None,
-        organized_dest=None,
-        index_out=None,
-        copy=False,
-        include_trash=False,
-        dry_run=getattr(args, 'dry_run', False)
-    ))
+    # Use enhanced workflow with progress tracking and transcription safeguards
+    exit_code = run_enhanced_workflow(dry_run=dry_run, force_sync=force_sync)
+    if exit_code != 0:
+        sys.exit(exit_code)
 
 
 def cmd_setup(args: argparse.Namespace) -> None:
@@ -197,45 +186,195 @@ def cmd_setup(args: argparse.Namespace) -> None:
 
 
 def cmd_export_text(args: argparse.Namespace) -> None:
-    """Export documents to text using OpenAI vision."""
-    from src.transcribe import transcribe_document
-    from src.errors import handle_error
+    """Export documents to text using OpenAI vision with enhanced UI."""
+    from src.cli import estimate_transcription_cost, TranscriptionManager
+    from rich.console import Console
 
     config = get_config()
-
-    raw_dir = Path(args.raw) if args.raw else config.raw_dir
-    out_dir = Path(args.out) if args.out else config.text_dir
+    console = Console()
+    dry_run = getattr(args, 'dry_run', False)
 
     # Determine which UUIDs to process
     if args.uuid:
         uuids = args.uuid
+    elif getattr(args, 'test_transcribe', False):
+        # Test mode: automatically select a small document
+        console.print("[cyan]🧪 Test mode: selecting a small document for testing[/cyan]")
+        uuids = _select_test_document(config.index_file, console)
+        if not uuids:
+            console.print("[red]❌ No suitable test document found[/red]")
+            return
+
+        if dry_run:
+            # Show enhanced dry-run preview
+            console.print("[yellow]🔍 DRY RUN - Transcription Preview[/yellow]\n")
+
+            try:
+                estimate = estimate_transcription_cost(uuids, config.index_file, args.model or config.openai_model)
+                tm = TranscriptionManager(console)
+                tm.show_cost_warning(estimate)
+
+                console.print("\n[dim]Documents to transcribe:[/dim]")
+                for uuid in uuids:
+                    doc_name = _get_document_name_from_index(uuid, config.index_file)
+                    console.print(f"  • {doc_name} ({uuid[:8]}...)")
+
+            except Exception as e:
+                console.print(f"[yellow]Could not load cost estimate: {e}[/yellow]")
+
+            console.print("\n[green]✓ Ready for transcription (remove --dry-run to execute)[/green]")
+            return
     else:
-        # Default: all document UUIDs present as directories under raw
-        uuids = [p.name for p in raw_dir.iterdir() if p.is_dir()]
+        # Interactive selection
+        uuids = show_transcription_menu(config.index_file)
+        if not uuids:
+            return
 
-    # Check for dry run
-    if getattr(args, 'dry_run', False):
-        print(f"🔍 DRY RUN - would transcribe {len(uuids)} documents")
-        print(f"   Input: {raw_dir}")
-        print(f"   Output: {out_dir}")
-        print(f"   Model: {args.model or config.openai_model}")
-        return
+    # Get force flag
+    force = getattr(args, 'force', False)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    model = args.model or config.openai_model
+    # Use enhanced transcription with progress tracking and cost safeguards
+    exit_code = run_enhanced_transcription(uuids, dry_run=dry_run, force=force)
+    if exit_code != 0:
+        sys.exit(exit_code)
 
-    # Process documents
-    for uuid in uuids:
-        print(f"📝 Processing {uuid}...")
-        try:
-            transcribe_document(
-                doc_uuid=uuid,
-                raw_dir=raw_dir,
-                output_dir=out_dir,
-                model=model
-            )
-        except Exception as e:
-            handle_error(e, f"transcription of {uuid}")
+
+def _get_document_name_from_index(uuid: str, index_file: Path) -> str:
+    """Helper to get document name from index file."""
+    try:
+        import csv
+        with open(index_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["uuid"] == uuid:
+                    return row["visibleName"]
+    except:
+        pass
+    return f"Document {uuid[:8]}..."
+
+
+def _select_test_document(index_file: Path, console) -> List[str]:
+    """Select a small document for testing transcription."""
+    import csv
+
+    try:
+        with open(index_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            documents = []
+            for row in reader:
+                if (row["nodeType"] == "DocumentType" and
+                    row["fileType"] == "notebook" and
+                    row["parentUuid"] != "trash" and
+                    row["pageCount"].isdigit()):
+                    pages = int(row["pageCount"])
+                    if pages > 0 and pages <= 3:  # Small documents only
+                        documents.append({
+                            "uuid": row["uuid"],
+                            "name": row["visibleName"],
+                            "pages": pages
+                        })
+
+            if documents:
+                # Select the smallest document
+                test_doc = min(documents, key=lambda d: d["pages"])
+                console.print(f"[green]📄 Selected: {test_doc['name']} ({test_doc['pages']} page{'s' if test_doc['pages'] != 1 else ''})[/green]")
+                return [test_doc["uuid"]]
+
+    except Exception as e:
+        console.print(f"[red]Error selecting test document: {e}[/red]")
+
+    return []
+
+
+def cmd_status(args: argparse.Namespace) -> None:
+    """Show current data state and sync information."""
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    import os
+
+    console = Console()
+    config = get_config()
+
+    # Check data directories
+    raw_exists = config.raw_dir.exists()
+    organized_exists = config.organized_dir.exists()
+    index_exists = config.index_file.exists()
+    text_exists = config.text_dir.exists()
+
+    # Count files if directories exist
+    raw_count = len(list(config.raw_dir.glob("*.metadata"))) if raw_exists else 0
+    organized_count = len(list(config.organized_dir.iterdir())) if organized_exists else 0
+    text_count = len(list(config.text_dir.glob("*.txt"))) if text_exists else 0
+
+    # Connection status
+    has_api_key = bool(os.environ.get("OPENAI_API_KEY"))
+
+    # Create status table
+    table = Table(title="📊 reM3 Status", show_header=True, header_style="bold magenta")
+    table.add_column("Component", style="cyan", no_wrap=True)
+    table.add_column("Status", justify="center")
+    table.add_column("Details", style="white")
+
+    # Data directories
+    table.add_row(
+        "Raw Data",
+        "[green]✓[/green]" if raw_exists else "[red]✗[/red]",
+        f"{raw_count} documents" if raw_exists else "Not synced yet"
+    )
+
+    table.add_row(
+        "Index",
+        "[green]✓[/green]" if index_exists else "[red]✗[/red]",
+        f"{config.index_file}" if index_exists else "Run 'python3 main.py index'"
+    )
+
+    table.add_row(
+        "Organized",
+        "[green]✓[/green]" if organized_exists else "[red]✗[/red]",
+        f"{organized_count} items" if organized_exists else "Run 'python3 main.py organize'"
+    )
+
+    table.add_row(
+        "Text Export",
+        "[green]✓[/green]" if text_count > 0 else "[yellow]○[/yellow]",
+        f"{text_count} transcribed" if text_count > 0 else "Optional - requires OpenAI API key"
+    )
+
+    # Configuration
+    table.add_row(
+        "Tablet Config",
+        "[green]✓[/green]" if config.host and config.user else "[red]✗[/red]",
+        f"{config.user}@{config.host}" if config.host else "Run 'python3 main.py setup'"
+    )
+
+    table.add_row(
+        "OpenAI API",
+        "[green]✓[/green]" if has_api_key else "[yellow]○[/yellow]",
+        "Ready for transcription" if has_api_key else "Set OPENAI_API_KEY for text export"
+    )
+
+    console.print(table)
+
+    # Show paths
+    paths_info = (
+        f"[bold]📁 Data Locations:[/bold]\n"
+        f"Base: [cyan]{config.base_dir}[/cyan]\n"
+        f"Raw: [cyan]{config.raw_dir}[/cyan]\n"
+        f"Organized: [cyan]{config.organized_dir}[/cyan]\n"
+        f"Text: [cyan]{config.text_dir}[/cyan]"
+    )
+
+    console.print("\n")
+    console.print(Panel(paths_info, border_style="blue", title="Configuration"))
+
+    # Show next steps
+    if not raw_exists:
+        console.print("\n[yellow]🚀 Next steps: Run 'python3 main.py' to sync your tablet[/yellow]")
+    elif not has_api_key and text_count == 0:
+        console.print("\n[yellow]💡 Want text transcription? Set OPENAI_API_KEY and run 'python3 main.py export-text --test-transcribe --force'[/yellow]")
+    else:
+        console.print("\n[green]✅ All set! Use 'python3 main.py --dry-run' to preview operations or 'python3 main.py help' for more options[/green]")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -243,14 +382,25 @@ def build_parser() -> argparse.ArgumentParser:
     config = get_config()
 
     p = argparse.ArgumentParser(
-        description="reM3 - reMarkable sync, organize, and export tool",
+        description="reM3 - reMarkable sync, organize, and transcribe tool with enhanced UI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python3 main.py                       # Default: setup and sync everything
-  python3 main.py --dry-run             # See what would happen
-  python3 main.py pull                  # Pull raw files only
-  python3 main.py export-text --uuid X  # Export specific document to text
+  python3 main.py                              # Complete workflow with smart sync
+  python3 main.py --dry-run                    # Preview all operations
+  python3 main.py --force-sync                 # Force full sync (all files)
+  python3 main.py export-text --test-transcribe --force  # Test transcription (1 doc)
+  python3 main.py export-text --uuid ABC123 --force      # Transcribe specific document
+  python3 main.py pull                         # Smart sync only (new/changed files)
+  python3 main.py help                         # Show detailed help
+
+Features:
+  ✨ Visual progress indicators and step-by-step workflow
+  🚀 Smart incremental sync (only downloads new/changed files)
+  💸 Cost estimation and safeguards for AI transcription
+  🧪 Test mode for trying transcription with small documents
+  📊 Interactive document selection with tree view
+  🔍 Comprehensive dry-run mode for all operations
         """
     )
 
@@ -259,8 +409,17 @@ Examples:
 
     sub = p.add_subparsers(dest="cmd", required=False, help="Command to run")
 
+    # help command
+    sp = sub.add_parser("help", help="Show detailed help and usage examples")
+    sp.set_defaults(func=cmd_help)
+
+    # status command
+    sp = sub.add_parser("status", help="Show current data state and sync information")
+    sp.set_defaults(func=cmd_status)
+
     # go command (default - setup if needed, then sync everything)
     sp = sub.add_parser("go", help="Do everything: setup (if needed) then sync")
+    sp.add_argument("--force-sync", action="store_true", help="Force full sync (download all files)")
     sp.add_argument("--dry-run", action="store_true", help="Show what would be done without doing it")
     sp.set_defaults(func=cmd_go)
 
@@ -274,15 +433,17 @@ Examples:
     sp.add_argument("--organized-dest", help="Organized destination")
     sp.add_argument("--copy", action="store_true", help="Copy files instead of symlinks")
     sp.add_argument("--include-trash", action="store_true", help="Include trashed items")
+    sp.add_argument("--force-sync", action="store_true", help="Force full sync (download all files)")
     sp.add_argument("--dry-run", action="store_true", help="Show what would be done without doing it")
     sp.set_defaults(func=cmd_sync)
 
     # pull command
-    sp = sub.add_parser("pull", help="Pull raw files from tablet via SFTP")
+    sp = sub.add_parser("pull", help="Pull raw files from tablet via SFTP with smart sync")
     sp.add_argument("--host", help="Tablet IP (default: from config)")
     sp.add_argument("--user", help="SSH user (default: from config)")
     sp.add_argument("--password", help="SSH password (default: from config)")
     sp.add_argument("--dest", help=f"Destination directory (default: {config.raw_dir})")
+    sp.add_argument("--force-sync", action="store_true", help="Force full sync (download all files)")
     sp.add_argument("--dry-run", action="store_true", help="Show what would be done without doing it")
     sp.set_defaults(func=cmd_pull)
 
@@ -326,8 +487,18 @@ Examples:
     sp.add_argument("--workers", type=int, help=f"Parallel workers (default: {config.workers})")
     sp.add_argument("--include-trash", action="store_true", help="Include trashed items")
     sp.add_argument("--uuid", action="append", help="Specific document UUID(s) to export")
+    sp.add_argument("--test-transcribe", action="store_true", help="Test mode: automatically select a small document for transcription")
+    sp.add_argument("--force", action="store_true", help="Skip confirmation prompts")
     sp.add_argument("--dry-run", action="store_true", help="Show what would be done without doing it")
     sp.set_defaults(func=cmd_export_text)
+
+    # browse command
+    sp = sub.add_parser("browse", help="Browse document catalog in a readable format")
+    sp.add_argument("--search", help="Search documents by title")
+    sp.add_argument("--type", choices=["notebook", "pdf", "epub"], help="Filter by document type")
+    sp.add_argument("--recent", type=int, default=7, help="Show documents from last N days")
+    sp.add_argument("--include-trash", action="store_true", help="Include trashed documents")
+    sp.set_defaults(func=cmd_browse)
 
     return p
 
@@ -355,5 +526,85 @@ def main() -> int:
         return 1
 
 
+
+
+def cmd_browse(args: argparse.Namespace) -> None:
+    """Browse document catalog in a readable format."""
+    from rich.console import Console
+    from rich.table import Table
+    from src.sync.index import load_index, search_documents, list_documents
+
+    console = Console()
+    config = get_config()
+    catalog_file = config.index_file
+
+    if not catalog_file.exists():
+        console.print("[red]No catalog found. Run 'python3 main.py index' first.[/red]")
+        return
+
+    # Load catalog
+    catalog = load_index(catalog_file)
+    documents = catalog.get("documents", [])
+
+    if args.search:
+        documents = search_documents(catalog_file, args.search)
+        console.print(f"[blue]🔍 Search results for '{args.search}':[/blue]")
+    elif args.type:
+        documents = list_documents(catalog_file, args.type, args.include_trash)
+        console.print(f"[blue]📄 {args.type.title()} documents:[/blue]")
+    elif args.recent:
+        # Filter recent documents
+        import time
+        cutoff = (time.time() - args.recent * 24 * 60 * 60) * 1000
+        documents = [d for d in documents if (d.get("modified", 0) if isinstance(d.get("modified", 0), (int, float)) else 0) > cutoff]
+        console.print(f"[blue]⏰ Documents from last {args.recent} days:[/blue]")
+    else:
+        if not args.include_trash:
+            documents = [d for d in documents if not d.get("is_trashed", False)]
+        console.print("[blue]📚 All documents:[/blue]")
+
+    if not documents:
+        console.print("[yellow]No documents found.[/yellow]")
+        return
+
+    # Create table
+    table = Table()
+    table.add_column("Title", style="cyan", no_wrap=False)
+    table.add_column("Type", style="green")
+    table.add_column("Pages", style="blue", justify="right")
+    table.add_column("Modified", style="dim")
+
+    for doc in sorted(documents, key=lambda d: d.get("modified", 0) if isinstance(d.get("modified", 0), (int, float)) else 0, reverse=True)[:50]:
+        title = doc.get("title", "Untitled")
+        doc_type = doc.get("type", "unknown")
+        pages = str(doc.get("pages", 0))
+
+        # Format modified date
+        modified = doc.get("modified", 0)
+        if modified and isinstance(modified, (int, float)):
+            try:
+                dt = datetime.fromtimestamp(modified / 1000)
+                modified_str = dt.strftime("%Y-%m-%d")
+            except:
+                modified_str = "Unknown"
+        else:
+            modified_str = "Unknown"
+
+        # Add trash indicator
+        if doc.get("is_trashed"):
+            title = f"🗑️ {title}"
+
+        table.add_row(title, doc_type, pages, modified_str)
+
+    console.print(table)
+
+    # Show stats
+    stats = catalog.get("stats", {})
+    if stats:
+        console.print(f"\n[dim]📊 Total: {stats.get('notebooks', 0)} notebooks, "
+                     f"{stats.get('pdfs', 0)} PDFs, {stats.get('epubs', 0)} books, "
+                     f"{stats.get('total_pages', 0)} pages[/dim]")
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
