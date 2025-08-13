@@ -27,42 +27,43 @@ python3 main.py
 
 This will:
 
-- Ask for IP/user/password once, write the `.env` and set up SSH keys for automatic access in subsequent runs.
-- Smart sync: only download new/changed files to `data/raw` (much faster on subsequent runs)
-- Create `data/catalog.json` with searchable document metadata
+- Show a friendly interactive menu explaining what reM3 does
+- Test tablet connectivity before doing anything
+- Ask for IP/user/password if first time, write the `.env` and set up SSH keys
+- Smart sync: only download new/changed files to `data/raw`
+- Smart indexing: only rebuild catalog if files actually changed
 - Build `data/organized` preserving your exact tablet folder structure
 
-Tip: next time it's even simpler — just run:
+Want to run everything immediately (old behavior)? Use the auto-run flag:
 ```bash
-python3 main.py
+python3 main.py --auto-run
 ```
 
 Want to see what would happen without doing it? Add `--dry-run`:
 ```bash
-python3 main.py --dry-run
+python3 main.py --auto-run --dry-run
 ```
 
 ### 🔧 Advanced (optional)
 Only read this if you want more control.
 
-- Sync everything (pull + index + organize):
+- Interactive menu (default, recommended):
 ```bash
-python3 main.py sync
+python3 main.py                                 # Interactive menu with guidance
 ```
 
-- Pull only (smart sync from tablet):
+- Auto-run complete workflow:
 ```bash
-python3 main.py pull
+python3 main.py --auto-run                      # Immediate sync (old behavior)
+python3 main.py --auto-run --force-sync         # Force download all files
 ```
 
-- Index only (rebuild `data/catalog.json` from `data/raw/`):
+- Individual operations:
 ```bash
-python3 main.py index
-```
-
-- Organize only (rebuild `data/organized/` preserving tablet structure):
-```bash
-python3 main.py organize
+python3 main.py pull                            # Smart sync only
+python3 main.py index                           # Rebuild catalog only
+python3 main.py organize                        # Rebuild organized structure only
+python3 main.py sync                            # Pull + index + organize
 ```
 
 - Browse and search your documents:
@@ -76,7 +77,8 @@ python3 main.py browse --include-trash          # Include deleted items
 
 - See what any command would do without doing it:
 ```bash
-python3 main.py sync --dry-run
+python3 main.py --auto-run --dry-run            # Preview complete workflow
+python3 main.py sync --dry-run                  # Preview sync only
 ```
 
 ### 📝 Export text (optional)
@@ -98,17 +100,25 @@ python3 main.py export-text --uuid <uuid> --model gpt-4o --workers 1
 - `data/organized`: Your exact tablet folder structure with readable names (copies, not symlinks)
 
 ### 💡 Tips
-- Keep the tablet awake/unlocked while syncing.
-- For Wi‑Fi, use the tablet's Wi‑Fi IP.
-- Smart sync makes subsequent syncs much faster (only downloads changes).
-- Use `python3 main.py browse` to search and explore your documents.
-- Use `--dry-run` to preview what any command will do.
-- Default data location is `~/reM3/data/` (configurable via `RM_BASE_DIR`).
+- **Interactive mode** (default): Provides guidance and connectivity checks
+- **Auto-run mode** (`--auto-run`): Maintains old immediate execution behavior
+- Keep the tablet awake/unlocked while syncing
+- For Wi‑Fi, use the tablet's Wi‑Fi IP
+- Smart sync makes subsequent syncs much faster (only downloads changes)
+- Index/organize operations are automatically skipped when no files change
+- Connectivity is tested before attempting any operations
+- Use `python3 main.py browse` to search and explore your documents
+- Use `--dry-run` to preview what any command will do
+- Default data location is `~/reM3/data/` (configurable via `RM_BASE_DIR`)
 
 ### 🧪 Notes
-- Smart sync and organize preserve your exact tablet structure.
-- Browse command provides powerful search and filtering.
-- Text export is experimental - requires OpenAI API key.
-- Error messages include helpful emojis and recovery suggestions.
+- **New interactive experience**: Friendly greeting and guided workflows
+- **Smart connectivity testing**: Checks tablet accessibility before operations
+- **Conditional operations**: Index/organize only run when files actually change
+- Smart sync and organize preserve your exact tablet structure
+- Browse command provides powerful search and filtering
+- Text export is experimental - requires OpenAI API key
+- Error messages include helpful emojis and recovery suggestions
+- Backward compatibility: Use `--auto-run` for the old immediate execution behavior
 
 

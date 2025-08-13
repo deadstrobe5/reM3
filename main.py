@@ -3,12 +3,11 @@
 
 import argparse
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import List
 
 from src.config import get_config
-from src.cli import run_enhanced_workflow, run_enhanced_transcription, show_transcription_menu
+from src.cli import run_enhanced_workflow, run_enhanced_transcription, show_transcription_menu, run_interactive_cli
 
 
 def cmd_pull(args: argparse.Namespace) -> None:
@@ -165,6 +164,13 @@ def cmd_go(args: argparse.Namespace) -> None:
         sys.exit(exit_code)
 
 
+def cmd_interactive(args: argparse.Namespace) -> None:
+    """Run interactive CLI menu."""
+    exit_code = run_interactive_cli(auto_run=False)
+    if exit_code != 0:
+        sys.exit(exit_code)
+
+
 def cmd_setup(args: argparse.Namespace) -> None:
     """Run setup wizard."""
     from src.setup import run_setup, interactive
@@ -288,93 +294,11 @@ def _select_test_document(index_file: Path, console) -> List[str]:
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Show current data state and sync information."""
-    from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    import os
+    from src.cli import show_collection_statistics
 
-    console = Console()
-    config = get_config()
-
-    # Check data directories
-    raw_exists = config.raw_dir.exists()
-    organized_exists = config.organized_dir.exists()
-    index_exists = config.index_file.exists()
-    text_exists = config.text_dir.exists()
-
-    # Count files if directories exist
-    raw_count = len(list(config.raw_dir.glob("*.metadata"))) if raw_exists else 0
-    organized_count = len(list(config.organized_dir.iterdir())) if organized_exists else 0
-    text_count = len(list(config.text_dir.glob("*.txt"))) if text_exists else 0
-
-    # Connection status
-    has_api_key = bool(os.environ.get("OPENAI_API_KEY"))
-
-    # Create status table
-    table = Table(title="📊 reM3 Status", show_header=True, header_style="bold magenta")
-    table.add_column("Component", style="cyan", no_wrap=True)
-    table.add_column("Status", justify="center")
-    table.add_column("Details", style="white")
-
-    # Data directories
-    table.add_row(
-        "Raw Data",
-        "[green]✓[/green]" if raw_exists else "[red]✗[/red]",
-        f"{raw_count} documents" if raw_exists else "Not synced yet"
-    )
-
-    table.add_row(
-        "Index",
-        "[green]✓[/green]" if index_exists else "[red]✗[/red]",
-        f"{config.index_file}" if index_exists else "Run 'python3 main.py index'"
-    )
-
-    table.add_row(
-        "Organized",
-        "[green]✓[/green]" if organized_exists else "[red]✗[/red]",
-        f"{organized_count} items" if organized_exists else "Run 'python3 main.py organize'"
-    )
-
-    table.add_row(
-        "Text Export",
-        "[green]✓[/green]" if text_count > 0 else "[yellow]○[/yellow]",
-        f"{text_count} transcribed" if text_count > 0 else "Optional - requires OpenAI API key"
-    )
-
-    # Configuration
-    table.add_row(
-        "Tablet Config",
-        "[green]✓[/green]" if config.host and config.user else "[red]✗[/red]",
-        f"{config.user}@{config.host}" if config.host else "Run 'python3 main.py setup'"
-    )
-
-    table.add_row(
-        "OpenAI API",
-        "[green]✓[/green]" if has_api_key else "[yellow]○[/yellow]",
-        "Ready for transcription" if has_api_key else "Set OPENAI_API_KEY for text export"
-    )
-
-    console.print(table)
-
-    # Show paths
-    paths_info = (
-        f"[bold]📁 Data Locations:[/bold]\n"
-        f"Base: [cyan]{config.base_dir}[/cyan]\n"
-        f"Raw: [cyan]{config.raw_dir}[/cyan]\n"
-        f"Organized: [cyan]{config.organized_dir}[/cyan]\n"
-        f"Text: [cyan]{config.text_dir}[/cyan]"
-    )
-
-    console.print("\n")
-    console.print(Panel(paths_info, border_style="blue", title="Configuration"))
-
-    # Show next steps
-    if not raw_exists:
-        console.print("\n[yellow]🚀 Next steps: Run 'python3 main.py' to sync your tablet[/yellow]")
-    elif not has_api_key and text_count == 0:
-        console.print("\n[yellow]💡 Want text transcription? Set OPENAI_API_KEY and run 'python3 main.py export-text --test-transcribe --force'[/yellow]")
-    else:
-        console.print("\n[green]✅ All set! Use 'python3 main.py --dry-run' to preview operations or 'python3 main.py help' for more options[/green]")
+    exit_code = show_collection_statistics()
+    if exit_code != 0:
+        sys.exit(exit_code)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -386,26 +310,30 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python3 main.py                              # Complete workflow with smart sync
-  python3 main.py --dry-run                    # Preview all operations
-  python3 main.py --force-sync                 # Force full sync (all files)
+  python3 main.py                              # Interactive menu (recommended)
+  python3 main.py --auto-run                   # Run complete workflow immediately
+  python3 main.py --auto-run --dry-run         # Preview all operations
+  python3 main.py --auto-run --force-sync      # Force full sync (all files)
   python3 main.py export-text --test-transcribe --force  # Test transcription (1 doc)
   python3 main.py export-text --uuid ABC123 --force      # Transcribe specific document
   python3 main.py pull                         # Smart sync only (new/changed files)
   python3 main.py help                         # Show detailed help
 
 Features:
-  ✨ Visual progress indicators and step-by-step workflow
+  ✨ Interactive menu with connectivity checks and smart workflows
   🚀 Smart incremental sync (only downloads new/changed files)
+  🔍 Automatic connectivity testing before operations
+  📊 Conditional index/organize (only when files actually change)
   💸 Cost estimation and safeguards for AI transcription
   🧪 Test mode for trying transcription with small documents
-  📊 Interactive document selection with tree view
+  📋 Interactive document selection with tree view
   🔍 Comprehensive dry-run mode for all operations
         """
     )
 
-    # Add global dry-run flag
+    # Add global flags
     p.add_argument("--dry-run", action="store_true", help="Show what would be done without doing it")
+    p.add_argument("--auto-run", action="store_true", help="Run complete workflow immediately (skip interactive menu)")
 
     sub = p.add_subparsers(dest="cmd", required=False, help="Command to run")
 
@@ -508,10 +436,17 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    # Default to 'go' command if no command specified
-    if not args.cmd:
-        args.cmd = "go"
-        args.func = cmd_go
+    # Handle auto-run mode vs interactive mode
+    if getattr(args, 'auto_run', False):
+        # Auto-run mode: maintain backward compatibility
+        if not args.cmd:
+            args.cmd = "go"
+            args.func = cmd_go
+    else:
+        # Interactive mode: default to interactive menu
+        if not args.cmd:
+            args.cmd = "interactive"
+            args.func = cmd_interactive
 
     try:
         # Call the appropriate command function
@@ -530,80 +465,18 @@ def main() -> int:
 
 def cmd_browse(args: argparse.Namespace) -> None:
     """Browse document catalog in a readable format."""
-    from rich.console import Console
-    from rich.table import Table
-    from src.sync.index import load_index, search_documents, list_documents
+    from src.cli import run_browse_command
 
-    console = Console()
-    config = get_config()
-    catalog_file = config.index_file
+    exit_code = run_browse_command(
+        search=getattr(args, 'search', None),
+        doc_type=getattr(args, 'type', None),
+        recent_days=getattr(args, 'recent', None),
+        include_trash=getattr(args, 'include_trash', False),
+        limit=getattr(args, 'limit', 50)
+    )
 
-    if not catalog_file.exists():
-        console.print("[red]No catalog found. Run 'python3 main.py index' first.[/red]")
-        return
-
-    # Load catalog
-    catalog = load_index(catalog_file)
-    documents = catalog.get("documents", [])
-
-    if args.search:
-        documents = search_documents(catalog_file, args.search)
-        console.print(f"[blue]🔍 Search results for '{args.search}':[/blue]")
-    elif args.type:
-        documents = list_documents(catalog_file, args.type, args.include_trash)
-        console.print(f"[blue]📄 {args.type.title()} documents:[/blue]")
-    elif args.recent:
-        # Filter recent documents
-        import time
-        cutoff = (time.time() - args.recent * 24 * 60 * 60) * 1000
-        documents = [d for d in documents if (d.get("modified", 0) if isinstance(d.get("modified", 0), (int, float)) else 0) > cutoff]
-        console.print(f"[blue]⏰ Documents from last {args.recent} days:[/blue]")
-    else:
-        if not args.include_trash:
-            documents = [d for d in documents if not d.get("is_trashed", False)]
-        console.print("[blue]📚 All documents:[/blue]")
-
-    if not documents:
-        console.print("[yellow]No documents found.[/yellow]")
-        return
-
-    # Create table
-    table = Table()
-    table.add_column("Title", style="cyan", no_wrap=False)
-    table.add_column("Type", style="green")
-    table.add_column("Pages", style="blue", justify="right")
-    table.add_column("Modified", style="dim")
-
-    for doc in sorted(documents, key=lambda d: d.get("modified", 0) if isinstance(d.get("modified", 0), (int, float)) else 0, reverse=True)[:50]:
-        title = doc.get("title", "Untitled")
-        doc_type = doc.get("type", "unknown")
-        pages = str(doc.get("pages", 0))
-
-        # Format modified date
-        modified = doc.get("modified", 0)
-        if modified and isinstance(modified, (int, float)):
-            try:
-                dt = datetime.fromtimestamp(modified / 1000)
-                modified_str = dt.strftime("%Y-%m-%d")
-            except:
-                modified_str = "Unknown"
-        else:
-            modified_str = "Unknown"
-
-        # Add trash indicator
-        if doc.get("is_trashed"):
-            title = f"🗑️ {title}"
-
-        table.add_row(title, doc_type, pages, modified_str)
-
-    console.print(table)
-
-    # Show stats
-    stats = catalog.get("stats", {})
-    if stats:
-        console.print(f"\n[dim]📊 Total: {stats.get('notebooks', 0)} notebooks, "
-                     f"{stats.get('pdfs', 0)} PDFs, {stats.get('epubs', 0)} books, "
-                     f"{stats.get('total_pages', 0)} pages[/dim]")
+    if exit_code != 0:
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,44 @@ class SyncStats:
                 f"❌ Errors: {self.errors}")
 
 
+def test_connection(host: str, user: str, password: str) -> bool:
+    """Test connectivity to the reMarkable tablet.
+
+    Args:
+        host: Tablet IP address
+        user: SSH username
+        password: SSH password
+
+    Returns:
+        True if connection successful, False otherwise
+    """
+    try:
+        import paramiko
+
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        # Try to connect with a short timeout
+        client.connect(
+            hostname=host,
+            username=user,
+            password=password,
+            timeout=10,
+            banner_timeout=10,
+            auth_timeout=10
+        )
+
+        # Test with a simple command
+        stdin, stdout, stderr = client.exec_command('echo "test"', timeout=5)
+        result = stdout.read().decode().strip()
+
+        client.close()
+        return result == "test"
+
+    except Exception:
+        return False
+
+
 def _sftp_is_dir(sftp: "paramiko.SFTPClient", remote_path: str) -> bool:
     """Check if a remote path is a directory."""
     try:
