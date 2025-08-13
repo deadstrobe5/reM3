@@ -121,4 +121,11 @@ python3 main.py export-text --uuid <uuid> --model gpt-4o --workers 1
 - Error messages include helpful emojis and recovery suggestions
 - Backward compatibility: Use `--auto-run` for the old immediate execution behavior
 
+### Images
+
+<img width="1079" height="686" alt="image" src="https://github.com/user-attachments/assets/02f58b68-ce43-40fc-91f4-f21db93cfe70" />
+
+<img width="1226" height="758" alt="image" src="https://github.com/user-attachments/assets/387e834d-1630-43a9-8a73-d8709d5950cc" />
+
+
 
