@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .utils import ensure_directory
+from ..utils import ensure_directory
 
 if TYPE_CHECKING:
     import paramiko

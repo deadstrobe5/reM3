@@ -15,15 +15,17 @@ reMarkable/
 ├── .env                   # Local config (RM_HOST, RM_USER, RM_PASSWORD)
 │
 ├── src/                   # Core modules
+│   ├── sync/              # Extract from reMarkable
+│   │   ├── pull.py        # SFTP operations
+│   │   ├── index.py       # Build document index
+│   │   └── organize.py    # Create collection structure
+│   ├── render/            # Transform to images
+│   │   └── rm_to_image.py # Convert .rm files to images
+│   ├── transcribe/        # Vision AI transcription
+│   │   └── openai.py      # OpenAI Vision API
 │   ├── config.py          # Configuration management
-│   ├── utils.py           # Common utilities
-│   ├── sync.py            # SFTP pull from tablet
-│   ├── index.py           # Build document index
-│   ├── organize.py        # Create collection structure
-│   ├── setup_wizard.py    # Interactive setup
-│   ├── export_text.py     # Export to text (orchestrator)
-│   ├── rm_render.py       # Convert .rm files to images
-│   └── openai_transcribe.py # AI vision transcription
+│   ├── setup.py           # Interactive setup
+│   └── utils.py           # Common utilities
 │
 └── data/                  # Local data (gitignored)
     ├── raw/               # Raw files from tablet
@@ -53,10 +55,10 @@ reMarkable/
 - `{uuid}/*.rm` - Handwritten page data
 
 ## Key Modules
-- **sync.py**: SFTP operations, pulls from `/home/root/.local/share/remarkable/xochitl/`
-- **organize.py**: Builds collection tree, handles parent-child relationships
-- **rm_render.py**: Converts .rm → SVG → PNG/JPEG using rmc and cairosvg
-- **openai_transcribe.py**: Sends images to GPT-4 Vision for transcription
+- **sync/**: Extract from reMarkable (pull via SFTP, index, organize collections)
+- **render/**: Transform .rm files → SVG → PNG/JPEG using rmc and cairosvg
+- **transcribe/**: Send images to AI vision models (OpenAI GPT-4 Vision)
+- **config.py**: Centralized configuration with .env support
 
 ## Configuration
 Environment variables or .env file:
@@ -73,4 +75,6 @@ Environment variables or .env file:
 ## Recent Optimizations
 - Render settings: DPI=200, stroke_scale=2.0, height=2000px, JPEG 95%
 - Modularized main.py - now just a thin CLI orchestrator
-- Clean separation of concerns across modules
+- Logical folder structure: sync/, render/, transcribe/
+- Centralized configuration with generic paths (~/remarkable-sync)
+- Clean module interfaces with simplified exports

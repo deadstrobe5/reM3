@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Any
 
-from .utils import read_json, ensure_directory
+from ..utils import read_json, ensure_directory
 
 
 def build_index(raw_dir: Path, out_csv: Path) -> None:

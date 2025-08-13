@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-from .utils import read_json, ensure_directory, sanitize_name, choose_unique_path
+from ..utils import read_json, ensure_directory, sanitize_name, choose_unique_path
 
 
 def _build_nodes(raw_dir: Path) -> Dict[str, dict]:

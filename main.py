@@ -23,7 +23,7 @@ def cmd_pull(args: argparse.Namespace) -> None:
 
 def cmd_index(args: argparse.Namespace) -> None:
     """Build index from raw files."""
-    from src.index import build_index
+    from src.sync import build_index
 
     config = get_config()
     raw_dir = Path(args.raw) if args.raw else config.raw_dir
@@ -34,7 +34,7 @@ def cmd_index(args: argparse.Namespace) -> None:
 
 def cmd_organize(args: argparse.Namespace) -> None:
     """Organize raw files into collection structure."""
-    from src.organize import organize_files
+    from src.sync import organize_files
 
     config = get_config()
     raw_dir = Path(args.raw) if args.raw else config.raw_dir
@@ -77,7 +77,7 @@ def cmd_all(args: argparse.Namespace) -> None:
 
 def cmd_go(args: argparse.Namespace) -> None:
     """One command to rule them all: setup if needed, then sync."""
-    from src.setup_wizard import interactive
+    from src.setup import interactive
 
     print("🚀 Starting reMarkable sync…")
 
@@ -120,7 +120,7 @@ def cmd_go(args: argparse.Namespace) -> None:
 
 def cmd_setup(args: argparse.Namespace) -> None:
     """Run setup wizard."""
-    from src.setup_wizard import run_setup, interactive
+    from src.setup import run_setup, interactive
 
     if args.host or args.user or args.password or args.gen_key or args.install_key:
         # Non-interactive mode with provided arguments
@@ -140,7 +140,7 @@ def cmd_setup(args: argparse.Namespace) -> None:
 
 def cmd_export_text(args: argparse.Namespace) -> None:
     """Export documents to text using OpenAI vision."""
-    from src.export_text import ExportSettings, export_document_to_text
+    from src.transcribe import transcribe_document
 
     config = get_config()
 
@@ -157,22 +157,20 @@ def cmd_export_text(args: argparse.Namespace) -> None:
         # Default: all document UUIDs present as directories under raw
         uuids = [p.name for p in raw_dir.iterdir() if p.is_dir()]
 
-    settings = ExportSettings(
-        raw_dir=raw_dir,
-        organized_dir=organized_dir,
-        out_dir=out_dir,
-        model=args.model or config.openai_model,
-        dpi=args.dpi or config.render_dpi,
-        image_format=args.image_format or config.render_format,
-        image_quality=args.image_quality or config.render_quality,
-        workers=args.workers or config.workers,
-        include_trash=bool(args.include_trash),
-    )
-
     # Process documents
+    model = args.model or config.openai_model
+
     for uuid in uuids:
         print(f"Processing {uuid}...")
-        export_document_to_text(uuid, settings)
+        try:
+            transcribe_document(
+                doc_uuid=uuid,
+                raw_dir=raw_dir,
+                output_dir=out_dir,
+                model=model
+            )
+        except Exception as e:
+            print(f"Failed to process {uuid}: {e}")
 
 
 def build_parser() -> argparse.ArgumentParser:
