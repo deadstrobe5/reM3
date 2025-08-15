@@ -1,4 +1,4 @@
-# reM3 - reMarkable Sync Tool
+# reM3 - reMarkable Sync & Transcribe Tool
 
 **Sync your reMarkable tablet and convert handwriting to text with AI.**
 
@@ -59,7 +59,7 @@ python3 main.py export-text        # Convert handwriting to text
 
 ### 🤖 AI Transcription
 - **Multiple AI providers** - OpenAI, OpenRouter, Claude, Qwen support
-- **🔥 Cracked Mode** - Revolutionary multi-AI transcription using 2-3 models simultaneously
+- **🔥 Cracked Mode** - Multi-AI transcription using 2-3 models simultaneously
 - **Real-time costs** - See actual costs as you transcribe (~$0.001-0.024 per page)
 - **Smart fallbacks** - If one AI fails, others continue
 
@@ -85,7 +85,7 @@ CRACKED_MODE=true
 CRACKED_MODELS=qwen/qwen2.5-vl-32b-instruct,qwen/qwen2.5-vl-7b-instruct
 CRACKED_MERGE_MODEL=qwen/qwen2.5-vl-7b-instruct
 ```
-*Revolutionary approach: Uses 2-3 AI models + intelligent merging for superior accuracy. Our key differentiator.*
+*Uses 2-3 AI models + intelligent merging for superior accuracy.*
 
 ## Tablet Setup
 
