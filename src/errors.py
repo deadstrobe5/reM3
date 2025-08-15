@@ -135,8 +135,8 @@ def require_openai_key() -> str:
     key = os.environ.get("OPENAI_API_KEY")
     if not key:
         raise TranscribeError(
-            "OpenAI API key not found",
-            details="Set OPENAI_API_KEY environment variable"
+            "API key not found",
+            details="Set OPENAI_API_KEY environment variable (OpenAI or OpenRouter key)"
         )
     return key
 

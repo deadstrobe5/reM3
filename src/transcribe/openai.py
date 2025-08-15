@@ -6,10 +6,12 @@ import base64
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
+from typing import Optional
 
 from openai import OpenAI
 
 from ..errors import TranscribeError, require_openai_key
+from ..config import get_config
 
 
 TRANSCRIBE_SYSTEM = (
@@ -54,7 +56,13 @@ def _pil_to_data_url(img: Image.Image, fmt: str = "PNG") -> str:
 
 def _transcribe_data_url(image_data_url: str, settings: OpenAISettings, attempt: int) -> str:
     api_key = require_openai_key()
-    client = OpenAI(api_key=api_key)
+    config = get_config()
+
+    # Initialize client with optional base_url
+    if config.openai_base_url:
+        client = OpenAI(api_key=api_key, base_url=config.openai_base_url)
+    else:
+        client = OpenAI(api_key=api_key)
 
     def _looks_like_refusal(s: str) -> bool:
         s_lower = s.lower()
@@ -94,6 +102,13 @@ def _transcribe_data_url(image_data_url: str, settings: OpenAISettings, attempt:
             text = text.strip()
             if not text or _looks_like_refusal(text):
                 raise TranscribeError("AI model refused to transcribe or returned empty response")
+
+            # Print actual cost if available from OpenRouter
+            if hasattr(resp, 'usage') and resp.usage and hasattr(resp.usage, 'cost'):
+                actual_cost = getattr(resp.usage, 'cost', None)
+                if actual_cost:
+                    print(f"💰 Actual cost for this page: ${actual_cost:.6f}")
+
             return text
         except Exception as e:
             if attempt >= settings.max_retries:

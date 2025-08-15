@@ -199,6 +199,7 @@ def cmd_export_text(args: argparse.Namespace) -> None:
     config = get_config()
     console = Console()
     dry_run = getattr(args, 'dry_run', False)
+    cracked_mode = False  # Initialize to ensure it's always defined
 
     # Determine which UUIDs to process
     if args.uuid:
@@ -218,7 +219,7 @@ def cmd_export_text(args: argparse.Namespace) -> None:
             try:
                 estimate = estimate_transcription_cost(uuids, config.index_file, args.model or config.openai_model)
                 tm = TranscriptionManager(console)
-                tm.show_cost_warning(estimate)
+                tm.show_cost_warning(estimate)  # type: ignore
 
                 console.print("\n[dim]Documents to transcribe:[/dim]")
                 for uuid in uuids:
@@ -232,15 +233,20 @@ def cmd_export_text(args: argparse.Namespace) -> None:
             return
     else:
         # Interactive selection
-        uuids = show_transcription_menu(config.index_file)
-        if not uuids:
+        result = show_transcription_menu(config.index_file)
+        if not result:
             return
+        uuids, cracked_mode = result
+
+    # Override cracked_mode for test transcribe mode
+    if args.uuid or getattr(args, 'test_transcribe', False):
+        cracked_mode = False
 
     # Get force flag
     force = getattr(args, 'force', False)
 
     # Use enhanced transcription with progress tracking and cost safeguards
-    exit_code = run_enhanced_transcription(uuids, dry_run=dry_run, force=force)
+    exit_code = run_enhanced_transcription(uuids, dry_run=dry_run, force=force, cracked_mode=cracked_mode)
     if exit_code != 0:
         sys.exit(exit_code)
 

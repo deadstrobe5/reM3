@@ -24,14 +24,14 @@ def run_enhanced_workflow(dry_run: bool = False, force: bool = False, force_sync
     return cli.run_complete_workflow(dry_run=dry_run, force_sync=force_sync)
 
 
-def run_enhanced_transcription(document_uuids: List[str], dry_run: bool = False, force: bool = False) -> int:
+def run_enhanced_transcription(document_uuids: List[str], dry_run: bool = False, force: bool = False, cracked_mode: bool = False) -> int:
     """Run transcription with enhanced UI for specific documents."""
     cli = create_enhanced_cli(force=force)
-    return cli.transcribe_specific_documents(document_uuids, dry_run=dry_run)
+    return cli.transcribe_specific_documents(document_uuids, dry_run=dry_run, cracked_mode=cracked_mode)
 
 
-def show_transcription_menu(index_file: Path, force: bool = False) -> Optional[List[str]]:
-    """Show interactive transcription menu and return selected UUIDs."""
+def show_transcription_menu(index_file: Path, force: bool = False) -> Optional[tuple[List[str], bool]]:
+    """Show interactive transcription menu and return selected UUIDs and cracked mode flag."""
     console = Console()
     tm = TranscriptionManager(console, force=force)
 
@@ -48,11 +48,38 @@ def show_transcription_menu(index_file: Path, force: bool = False) -> Optional[L
         return None
 
     tm.show_documents_tree(documents)
-    return tm.select_documents(documents)
+    # Ask about cracked mode first
+    console.print("\n[bold]Transcription Mode Selection[/bold]")
+    console.print("1. [bold]Standard[/bold] - Single model (faster, cheaper)")
+    console.print("2. [bold red]🔥 CRACKED[/bold red] - Multiple models + merge (best quality, more expensive)")
+
+    try:
+        mode_choice = input("\nSelect mode [1-2] (1): ").strip()
+        if not mode_choice:
+            mode_choice = "1"
+        cracked_mode = mode_choice == "2"
+    except KeyboardInterrupt:
+        return None
+
+    if cracked_mode:
+        console.print("\n[red]🔥 CRACKED MODE ENABLED[/red]")
+        console.print("[dim]Will use multiple models + intelligent merge for best results[/dim]")
+
+    selected_uuids = tm.select_documents(documents, cracked_mode=cracked_mode)
+    if selected_uuids:
+        return selected_uuids, cracked_mode
+    return None
 
 
-def estimate_transcription_cost(document_uuids: List[str], index_file: Path, model: str = "gpt-4o") -> Dict[str, Union[int, float, str]]:
+def estimate_transcription_cost(document_uuids: List[str], index_file: Path, model: Optional[str] = None) -> Dict[str, Union[int, float, str, List[str], Dict[str, float]]]:
     """Estimate transcription cost for given documents."""
+    from ..config import get_config
+
+    # Use actual config model if not specified
+    if model is None:
+        config = get_config()
+        model = config.openai_model
+
     total_pages = 0
 
     try:

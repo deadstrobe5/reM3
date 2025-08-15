@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Dict, Tuple, Union
+from typing import Dict, List, Union, Optional, Tuple
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt, Confirm, IntPrompt
 from rich.table import Table
 from rich.tree import Tree
-from rich.prompt import Prompt, Confirm, IntPrompt
 
 from ..config import get_config
+from ..transcribe.cracked import CrackedTranscriber
 
 
 class TranscriptionManager:
@@ -23,39 +24,89 @@ class TranscriptionManager:
         self.config = get_config()
         self.force = force
 
-    def estimate_cost(self, num_pages: int, model: str = "gpt-4o") -> Dict[str, Union[int, float, str]]:
+    def estimate_cost(self, num_pages: int, model: Optional[str] = None, cracked_mode: Optional[bool] = None) -> Dict[str, Union[int, float, str, List[str], Dict[str, float]]]:
         """Estimate transcription costs."""
-        # OpenAI pricing for vision (approximate)
-        costs = {
-            "gpt-4o": 0.01,  # $0.01 per image (high detail)
-            "gpt-4o-mini": 0.00425,  # $0.00425 per image
-        }
+        # Use actual config model if not specified
+        if model is None:
+            model = self.config.openai_model
 
-        cost_per_page = costs.get(model, 0.01)
-        total_cost = num_pages * cost_per_page
+        # Check if cracked mode should be used
+        if cracked_mode is None:
+            cracked_mode = self.config.cracked_mode
 
-        return {
-            "pages": num_pages,
-            "cost_per_page": cost_per_page,
-            "total_cost": total_cost,
-            "model": model
-        }
+        if cracked_mode:
+            # Use cracked mode cost estimation
+            transcriber = CrackedTranscriber()
+            cracked_estimate = transcriber.estimate_cracked_cost(num_pages)
 
-    def show_cost_warning(self, estimate: Dict[str, Union[int, float, str]]):
-        """Show cost estimation and warning."""
-        panel_content = (
-            f"[yellow]⚠️  Transcription Cost Estimate[/yellow]\n\n"
-            f"📄 Pages to process: [bold]{estimate['pages']}[/bold]\n"
-            f"🤖 Model: [bold]{estimate['model']}[/bold]\n"
-            f"💰 Cost per page: [bold]${estimate['cost_per_page']:.4f}[/bold]\n"
-            f"💸 Total estimated cost: [bold red]${estimate['total_cost']:.2f}[/bold red]\n\n"
-            f"[dim]Note: This is an estimate. Actual costs may vary.[/dim]"
-        )
+            return {
+                "pages": num_pages,
+                "mode": "CRACKED MODE",
+                "models": cracked_estimate["models_used"],
+                "merge_model": cracked_estimate["merge_model"],
+                "cost_per_page": (cracked_estimate["total_cost"] if isinstance(cracked_estimate["total_cost"], (int, float)) else 0.0) / num_pages,
+                "total_cost": cracked_estimate["total_cost"],
+                "cost_multiplier": cracked_estimate["cost_multiplier"],
+                "individual_costs": cracked_estimate["individual_costs"],
+                "merge_cost": cracked_estimate["merge_cost"]
+            }
+        else:
+            # Standard single model pricing
+            costs = {
+                # OpenAI models
+                "gpt-4o": 0.01,  # $0.01 per image (high detail)
+                "gpt-4o-mini": 0.00425,  # $0.00425 per image
+                # OpenRouter/Qwen models (much cheaper)
+                "qwen/qwen2.5-vl-32b-instruct": 0.002,  # ~$0.002 per image
+                "qwen/qwen2.5-vl-7b-instruct": 0.001,   # ~$0.001 per image
+                # Other OpenRouter models
+                "anthropic/claude-3-5-sonnet:beta": 0.008,
+                "google/gemini-pro-vision": 0.0025,
+            }
+
+            cost_per_page = costs.get(model, 0.005)  # Default to reasonable estimate
+            total_cost = num_pages * cost_per_page
+
+            return {
+                "pages": num_pages,
+                "model": model,
+                "cost_per_page": cost_per_page,
+                "total_cost": total_cost
+            }
+
+    def show_cost_warning(self, estimate: Dict[str, Union[int, float, str, List[str], Dict[str, float]]]) -> None:
+        """Display cost warning with details."""
+        if estimate.get("mode") == "CRACKED MODE":
+            # Special formatting for cracked mode
+            models_list = estimate.get("models", [])
+            models_text = ", ".join(models_list) if isinstance(models_list, list) else str(models_list)
+            models_count = len(models_list) if isinstance(models_list, list) else 1
+            warning_text = (
+                f"[red]🔥 CRACKED MODE Cost Estimate[/red]\n\n"
+                f"📄 Pages to process: [bold]{estimate['pages']}[/bold]\n"
+                f"🤖 Models: [bold]{models_text}[/bold]\n"
+                f"🧠 Merge model: [bold]{estimate['merge_model']}[/bold]\n"
+                f"💰 Cost per page: [bold]${estimate['cost_per_page']:.4f}[/bold]\n"
+                f"📈 Cost multiplier: [bold]{estimate.get('cost_multiplier', 1):.1f}x vs single model[/bold]\n"
+                f"💸 Total estimated cost: [bold red]${estimate['total_cost']:.3f}[/bold red]\n\n"
+                f"[yellow]⚠️  Cracked mode uses {models_count} models + merge for best quality[/yellow]\n"
+                f"[dim]Note: This is an estimate. Actual costs may vary.[/dim]"
+            )
+        else:
+            # Standard single model formatting
+            warning_text = (
+                f"[yellow]⚠️  Transcription Cost Estimate[/yellow]\n\n"
+                f"📄 Pages to process: [bold]{estimate['pages']}[/bold]\n"
+                f"🤖 Model: [bold]{estimate['model']}[/bold]\n"
+                f"💰 Cost per page: [bold]${estimate['cost_per_page']:.4f}[/bold]\n"
+                f"💸 Total estimated cost: [bold red]${estimate['total_cost']:.2f}[/bold red]\n\n"
+                f"[dim]Note: This is an estimate. Actual costs may vary.[/dim]"
+            )
 
         self.console.print(Panel(
-            panel_content,
-            border_style="yellow",
-            title="💸 Cost Warning"
+            warning_text,
+            border_style="yellow" if estimate.get("mode") != "CRACKED MODE" else "red",
+            title="💸 Cost Warning" if estimate.get("mode") != "CRACKED MODE" else "🔥 CRACKED MODE Cost Warning"
         ))
 
     def get_documents_summary(self, index_file: Path) -> Tuple[List[Dict], Dict[str, int]]:
@@ -138,7 +189,7 @@ class TranscriptionManager:
 
         self.console.print(tree)
 
-    def select_documents(self, documents: List[Dict]) -> List[str]:
+    def select_documents(self, documents: List[Dict], cracked_mode: bool = False) -> Optional[List[str]]:
         """Interactive document selection for transcription."""
         if not documents:
             self.console.print("[red]No notebook documents found for transcription.[/red]")
@@ -175,7 +226,7 @@ class TranscriptionManager:
 
             if choice == 1:  # All documents
                 total_pages = sum(doc["pages"] for doc in documents)
-                estimate = self.estimate_cost(total_pages)
+                estimate = self.estimate_cost(total_pages, cracked_mode=cracked_mode)
                 self.show_cost_warning(estimate)
 
                 if self.force or self._safe_confirm(f"\nProceed with transcribing all {len(documents)} documents?"):
@@ -184,14 +235,14 @@ class TranscriptionManager:
                     continue
 
             elif choice == 2:  # Select specific
-                return self._select_specific_documents(documents)
+                return self._select_specific_documents(documents, cracked_mode)
 
             elif choice == 3:  # Test with one
                 # Find shortest document for testing
                 test_doc = min(documents, key=lambda d: d["pages"])
                 self.console.print(f"\n[green]Selected for testing: [bold]{test_doc['name']}[/bold] ({test_doc['pages']} page{'s' if test_doc['pages'] != 1 else ''})[/green]")
 
-                estimate = self.estimate_cost(test_doc["pages"])
+                estimate = self.estimate_cost(test_doc["pages"], cracked_mode=cracked_mode)
                 self.show_cost_warning(estimate)
 
                 if self.force or self._safe_confirm("\nProceed with test transcription?"):
@@ -202,7 +253,7 @@ class TranscriptionManager:
             else:  # Cancel
                 return []
 
-    def _select_specific_documents(self, documents: List[Dict]) -> List[str]:
+    def _select_specific_documents(self, documents: List[Dict], cracked_mode: bool = False) -> List[str]:
         """Allow user to select specific documents."""
         self.console.print("\n[bold]Available Documents:[/bold]")
 
@@ -235,7 +286,7 @@ class TranscriptionManager:
                 for doc in selected_docs:
                     self.console.print(f"  • {doc['name']} ({doc['pages']} pages)")
 
-                estimate = self.estimate_cost(total_pages)
+                estimate = self.estimate_cost(total_pages, cracked_mode=cracked_mode)
                 self.show_cost_warning(estimate)
 
                 if self.force or self._safe_confirm("\nProceed with transcription?"):

@@ -33,8 +33,14 @@ class Config:
 
     # OpenAI settings
     openai_model: str = "gpt-4o"
+    openai_base_url: Optional[str] = None
     openai_temperature: float = 0.0
     openai_max_retries: int = 5
+
+    # Cracked mode settings (multi-model transcription + merge)
+    cracked_mode: bool = False
+    cracked_models: Optional[list[str]] = None
+    cracked_merge_model: str = "gpt-4o"
 
     # Processing settings
     workers: int = 3
@@ -94,13 +100,18 @@ class Config:
 
         # Load .env file if it exists
         env_vars = {}
+        if env_path:
+            env_path = Path(env_path) if isinstance(env_path, str) else env_path
         if env_path and env_path.exists():
-            for line in env_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                env_vars[key.strip()] = value.strip().strip('"').strip("'")
+            try:
+                for line in env_path.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    env_vars[key.strip()] = value.strip().strip('"').strip("'")
+            except Exception as e:
+                print(f"Warning: Could not read .env file {env_path}: {e}")
 
         # Apply configuration (env vars take precedence)
         config.host = os.environ.get("RM_HOST", env_vars.get("RM_HOST", config.host))
@@ -116,6 +127,24 @@ class Config:
             config.render_dpi = int(dpi)
         if model := os.environ.get("OPENAI_MODEL", env_vars.get("OPENAI_MODEL")):
             config.openai_model = model
+        if base_url := os.environ.get("OPENAI_BASE_URL", env_vars.get("OPENAI_BASE_URL")):
+            config.openai_base_url = base_url
+
+        # Cracked mode settings
+        if cracked := os.environ.get("CRACKED_MODE", env_vars.get("CRACKED_MODE")):
+            config.cracked_mode = cracked.lower() in ("true", "1", "yes", "on")
+        if merge_model := os.environ.get("CRACKED_MERGE_MODEL", env_vars.get("CRACKED_MERGE_MODEL")):
+            config.cracked_merge_model = merge_model
+        if cracked_models := os.environ.get("CRACKED_MODELS", env_vars.get("CRACKED_MODELS")):
+            config.cracked_models = [m.strip() for m in cracked_models.split(",")]
+        elif config.cracked_models is None:
+            # Set default cracked models
+            config.cracked_models = [
+                "gpt-4o",
+                "anthropic/claude-3-5-sonnet:beta",
+                "qwen/qwen2.5-vl-32b-instruct"
+            ]
+
         if workers := os.environ.get("RM_WORKERS", env_vars.get("RM_WORKERS")):
             config.workers = int(workers)
 
@@ -140,6 +169,18 @@ class Config:
             "",
             "# Optional: OpenAI settings",
             f"# OPENAI_MODEL={self.openai_model}",
+            "# OPENAI_API_KEY=your_openai_or_openrouter_key_here",
+            "",
+            "# Optional: Use Qwen via OpenRouter (3 variables needed)",
+            "# OPENAI_BASE_URL=https://openrouter.ai/api/v1",
+            "# OPENAI_MODEL=qwen/qwen2.5-vl-32b-instruct",
+            "",
+            "# Optional: Cracked mode (multi-model transcription + merge)",
+            f"# CRACKED_MODE={str(self.cracked_mode).lower()}",
+            f"# CRACKED_MERGE_MODEL={self.cracked_merge_model}",
+            f"# CRACKED_MODELS={','.join(self.cracked_models or [])}",
+            "",
+            "# Optional: Processing settings",
             f"# RM_WORKERS={self.workers}",
         ]
 
@@ -163,10 +204,10 @@ class Config:
 _config: Optional[Config] = None
 
 
-def get_config() -> Config:
+def get_config(force_reload: bool = False) -> Config:
     """Get the global configuration instance."""
     global _config
-    if _config is None:
+    if _config is None or force_reload:
         _config = Config.load()
     return _config
 
@@ -175,3 +216,8 @@ def reset_config() -> None:
     """Reset the global configuration (mainly for testing)."""
     global _config
     _config = None
+
+
+def reload_config() -> Config:
+    """Force reload configuration from .env and environment."""
+    return get_config(force_reload=True)

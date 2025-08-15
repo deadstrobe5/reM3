@@ -5,15 +5,22 @@ from .openai import (
     OpenAISettings,
     transcribe_image_to_text,
 )
+from .cracked import (
+    CrackedTranscriber,
+    CrackedResult,
+    transcribe_image_cracked,
+)
 
 __all__ = [
     'OpenAISettings',
     'transcribe_image_to_text',
+    'CrackedResult',
+    'transcribe_image_cracked',
     'transcribe_document',  # Simplified interface
 ]
 
 
-def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o'):
+def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o', cracked_mode=False):
     """Transcribe a complete document using AI vision.
 
     Args:
@@ -21,6 +28,7 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
         raw_dir: Path to raw files directory
         output_dir: Optional output directory for text files
         model: AI model to use (default: gpt-4o)
+        cracked_mode: Use multiple models + merge for best results
 
     Returns:
         Path to transcribed text file
@@ -51,20 +59,40 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
         return None
 
     # Transcribe each image and combine
-    settings = OpenAISettings(
-        model=model,
-        temperature=config.openai_temperature,
-        max_retries=config.openai_max_retries,
-    )
-
     transcriptions = []
-    for img_path in image_paths:
-        try:
-            text = transcribe_image_to_text(img_path, settings)
-            if text and text != "[no-text]":
-                transcriptions.append(text)
-        except Exception as e:
-            print(f"Failed to transcribe {img_path}: {e}")
+    total_cost = 0.0
+
+    if cracked_mode or config.cracked_mode:
+        print(f"🔥 CRACKED MODE: Transcribing with multiple models")
+        transcriber = CrackedTranscriber()
+
+        for img_path in image_paths:
+            try:
+                result = transcriber.transcribe_image_cracked(img_path)
+                if result.final_text and result.final_text != "[no-text]":
+                    transcriptions.append(result.final_text)
+                total_cost += result.total_cost
+                print(f"   💰 Page cost: ${result.total_cost:.6f}")
+            except Exception as e:
+                print(f"Failed to transcribe {img_path}: {e}")
+
+        if total_cost > 0:
+            print(f"\n🔥 CRACKED MODE TOTAL: ${total_cost:.6f}")
+    else:
+        # Standard single-model transcription
+        settings = OpenAISettings(
+            model=model,
+            temperature=config.openai_temperature,
+            max_retries=config.openai_max_retries,
+        )
+
+        for img_path in image_paths:
+            try:
+                text = transcribe_image_to_text(img_path, settings)
+                if text and text != "[no-text]":
+                    transcriptions.append(text)
+            except Exception as e:
+                print(f"Failed to transcribe {img_path}: {e}")
 
     # Save combined transcription
     if transcriptions:
@@ -73,7 +101,11 @@ def transcribe_document(doc_uuid: str, raw_dir, output_dir=None, model='gpt-4o')
         output_file = output_dir / f"{filename}.txt"
 
         # Add metadata header
-        header = f"# {doc_name}\n# UUID: {doc_uuid}\n# Pages: {len(transcriptions)}\n# Model: {model}\n\n"
+        mode_info = "CRACKED MODE" if (cracked_mode or config.cracked_mode) else model
+        header = f"# {doc_name}\n# UUID: {doc_uuid}\n# Pages: {len(transcriptions)}\n# Mode: {mode_info}\n"
+        if total_cost > 0:
+            header += f"# Total Cost: ${total_cost:.6f}\n"
+        header += "\n"
         combined_text = header + "\n\n---\n\n".join(transcriptions)
 
         output_file.write_text(combined_text, encoding="utf-8")

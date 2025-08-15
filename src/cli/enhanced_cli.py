@@ -264,9 +264,9 @@ class EnhancedCLI:
             return 0
 
         # Run transcription
-        return self._run_transcription(selected_uuids)
+        return self._run_transcription(selected_uuids, cracked_mode=False)
 
-    def _run_transcription(self, document_uuids: List[str]) -> int:
+    def _run_transcription(self, document_uuids: List[str], cracked_mode: bool = False) -> int:
         """Run transcription with detailed progress tracking."""
         self.progress_tracker.start_step("Transcribe")
 
@@ -314,7 +314,8 @@ class EnhancedCLI:
                             doc_uuid=uuid,
                             raw_dir=self.config.raw_dir,
                             output_dir=self.config.text_dir,
-                            model=self.config.openai_model
+                            model=self.config.openai_model,
+                            cracked_mode=cracked_mode
                         )
 
                         if result:
@@ -393,10 +394,11 @@ class EnhancedCLI:
             title="📝 Transcription Results"
         ))
 
-    def transcribe_specific_documents(self, document_uuids: List[str], dry_run: bool = False) -> int:
+    def transcribe_specific_documents(self, document_uuids: List[str], dry_run: bool = False, cracked_mode: bool = False) -> int:
         """Transcribe specific documents (for direct CLI usage)."""
         if dry_run:
-            self.console.print(f"[yellow]🔍 DRY RUN - Would transcribe {len(document_uuids)} document(s)[/yellow]")
+            mode_text = "CRACKED MODE" if cracked_mode else "standard mode"
+            self.console.print(f"[yellow]🔍 DRY RUN - Would transcribe {len(document_uuids)} document(s) using {mode_text}[/yellow]")
             return 0
 
         # Check API key
@@ -437,7 +439,7 @@ class EnhancedCLI:
         # TranscriptionManager already handles cost estimation and confirmation
 
         # Run transcription
-        return self._run_transcription(document_uuids)
+        return self._run_transcription(document_uuids, cracked_mode=cracked_mode)
 
     def show_quick_help(self):
         """Show quick help for the enhanced CLI."""

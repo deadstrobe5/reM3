@@ -7,7 +7,7 @@ from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.text import Text
 
@@ -111,16 +111,13 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
         """Show main menu and get user choice."""
         self.console.print("\n[bold]What would you like to do?[/bold]")
 
+        # Core functionality
         options = [
-            ("sync", "Complete sync workflow", "🚀  Smart sync + organize your files"),
-            ("sync-force", "Force full sync", "🔄  Download ALL files (use if sync issues suspected)"),
-            ("pull-only", "Download files only", "📥  Just sync files, no organizing"),
-            ("browse", "Browse existing documents", "🔍  Search and view your current documents"),
-            ("transcribe", "Convert handwriting to text", "📝  AI transcription (requires OpenAI API key)"),
-            ("status", "Show current state", "📊  Check what you have locally"),
-            ("setup", "Re-run setup wizard", "⚙️   Reconfigure connection settings"),
-            ("help", "Show detailed help", "📖  Full documentation and examples"),
-            ("quit", "Exit", "👋  Exit the program")
+            ("sync", "Sync from tablet", "🚀  Download and organize your files"),
+            ("browse", "Browse documents", "🔍  Search and view what you have"),
+            ("transcribe", "Convert to text", "📝  AI transcription of handwriting"),
+            ("advanced", "Advanced options", "⚙️   More tools and settings"),
+            ("quit", "Exit", "👋  Exit reM3")
         ]
 
         table = Table(show_header=False, box=None, pad_edge=False)
@@ -135,14 +132,18 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
 
         while True:
             try:
-                choice = IntPrompt.ask(
-                    "\nEnter your choice",
-                    choices=[str(i) for i in range(1, len(options) + 1)],
-                    default=1
-                )
-                return options[choice - 1][0]
+                choice_str = input(f"\nEnter your choice [1-{len(options)}] (1): ").strip()
+                if not choice_str:
+                    choice_str = "1"
+                choice = int(choice_str)
+                if 1 <= choice <= len(options):
+                    return options[choice - 1][0]
+                else:
+                    self.console.print(f"[red]Please enter a number between 1 and {len(options)}.[/red]")
             except KeyboardInterrupt:
                 return "quit"
+            except ValueError:
+                self.console.print("[red]Please enter a valid number.[/red]")
             except Exception:
                 self.console.print("[red]Invalid choice. Please try again.[/red]")
 
@@ -191,36 +192,73 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
                 else:
                     if not Confirm.ask("\nTry again?", default=True):
                         continue
-                    # Loop back to connectivity check
-
-            elif choice == "sync-force":
-                if self.check_connectivity():
-                    exit_code = run_enhanced_workflow(force_sync=True)
-                    if exit_code != 0:
-                        self.console.print(f"[red]❌ Force sync failed with exit code {exit_code}[/red]")
-                else:
-                    if not Confirm.ask("\nTry again?", default=True):
-                        continue
-
-            elif choice == "pull-only":
-                if self.check_connectivity():
-                    exit_code = self._run_pull_only()
-                    if exit_code != 0:
-                        self.console.print(f"[red]❌ Pull failed with exit code {exit_code}[/red]")
-                else:
-                    if not Confirm.ask("\nTry again?", default=True):
-                        continue
 
             elif choice == "browse":
                 self._run_browse()
 
             elif choice == "transcribe":
-                self._run_transcription_menu()
+                self._run_transcribe()
 
-            elif choice == "status":
+            elif choice == "advanced":
+                self._show_advanced_menu()
+
+            # Show separator and ask to continue for most operations
+            if choice in ["browse", "transcribe", "sync", "advanced"]:
+                self.console.print("\n" + "="*60)
+                if not Confirm.ask("Return to main menu?", default=True):
+                    self.console.print("\n[cyan]👋  Thanks for using reM3![/cyan]")
+                    return 0
+                # Continue to next iteration of while loop
+
+    def _show_advanced_menu(self):
+        """Show advanced options menu."""
+        self.console.print("\n[bold]Advanced Options[/bold]")
+
+        advanced_options = [
+            ("force-sync", "Force full sync", "🔄  Download ALL files (use if sync issues)"),
+            ("pull-only", "Download files only", "📥  Just sync files, no organizing"),
+            ("status", "Show current state", "📊  Check what you have locally"),
+            ("setup", "Re-run setup wizard", "⚙️   Reconfigure connection settings"),
+            ("help", "Show detailed help", "📖  Full documentation and examples"),
+            ("back", "Back to main menu", "⬅️   Return to main menu")
+        ]
+
+        table = Table(show_header=False, box=None, pad_edge=False)
+        table.add_column("Choice", style="bold cyan", width=3)
+        table.add_column("Action", style="bold white", width=20)
+        table.add_column("Description", style="dim white")
+
+        for i, (_, action, desc) in enumerate(advanced_options, 1):
+            table.add_row(f"{i}.", action, desc)
+
+        self.console.print(table)
+
+        try:
+            choice_str = input(f"\nEnter your choice [1-{len(advanced_options)}] (6): ").strip()
+            if not choice_str:
+                choice_str = "6"
+            choice = int(choice_str)
+            if 1 <= choice <= len(advanced_options):
+                selected = advanced_options[choice - 1][0]
+            else:
+                self.console.print(f"[red]Please enter a number between 1 and {len(advanced_options)}.[/red]")
+                return
+
+            if selected == "back":
+                return
+            elif selected == "force-sync":
+                if self.check_connectivity():
+                    exit_code = run_enhanced_workflow(force_sync=True)
+                    if exit_code != 0:
+                        self.console.print(f"[red]❌ Force sync failed with exit code {exit_code}[/red]")
+            elif selected == "pull-only":
+                if self.check_connectivity():
+                    exit_code = self._run_pull_only()
+                    if exit_code != 0:
+                        self.console.print(f"[red]❌ Pull failed with exit code {exit_code}[/red]")
+            elif selected == "status":
                 self._run_status()
-
-            elif choice == "setup":
+            elif selected == "setup":
                 try:
                     from ..setup import interactive
                     interactive()
@@ -231,19 +269,17 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
                     self.console.print("[green]✅ Setup updated![/green]")
                 except Exception as e:
                     handle_error(e, "setup")
-
-            elif choice == "help":
+            elif selected == "help":
                 from .enhanced_cli import EnhancedCLI
                 cli = EnhancedCLI()
                 cli.show_quick_help()
 
-            # Show separator and ask to continue for most operations
-            if choice in ["browse", "transcribe", "status", "help", "setup", "sync", "sync-force", "pull-only"]:
-                self.console.print("\n" + "="*60)
-                if not Confirm.ask("Return to main menu?", default=True):
-                    self.console.print("\n[cyan]👋  Thanks for using reM3![/cyan]")
-                    return 0
-                # Continue to next iteration of while loop
+        except KeyboardInterrupt:
+            return
+        except ValueError:
+            self.console.print("[red]Please enter a valid number.[/red]")
+        except Exception:
+            self.console.print("[red]Invalid choice. Please try again.[/red]")
 
     def _run_smart_sync(self) -> int:
         """Run smart sync with conditional index/organize."""
@@ -408,7 +444,7 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
             limit=50
         )
 
-    def _run_transcription_menu(self) -> int:
+    def _run_transcribe(self):
         """Run transcription menu."""
         if not self.config.index_file.exists():
             self.console.print("[yellow]⚠️  No index found. You need to sync first.[/yellow]")
@@ -436,9 +472,10 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
                 return 0
 
         # Show transcription menu
-        selected_uuids = show_transcription_menu(self.config.index_file)
-        if selected_uuids:
-            return run_enhanced_transcription(selected_uuids)
+        result = show_transcription_menu(self.config.index_file)
+        if result:
+            selected_uuids, cracked_mode = result
+            return run_enhanced_transcription(selected_uuids, cracked_mode=cracked_mode)
 
         return 0
 
@@ -459,9 +496,10 @@ reM3 syncs your reMarkable tablet content to your computer, organizing it exactl
         self.console.print("\n[bold cyan]📝 Text Transcription Available[/bold cyan]")
 
         if Confirm.ask("Would you like to transcribe handwriting to text?", default=False):
-            selected_uuids = show_transcription_menu(self.config.index_file)
-            if selected_uuids:
-                run_enhanced_transcription(selected_uuids)
+            result = show_transcription_menu(self.config.index_file)
+            if result:
+                selected_uuids, cracked_mode = result
+                run_enhanced_transcription(selected_uuids, cracked_mode=cracked_mode)
 
 
 def run_interactive_cli(auto_run: bool = False) -> int:
