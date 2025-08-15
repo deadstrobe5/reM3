@@ -58,7 +58,7 @@ python3 main.py export-text        # Convert handwriting to text
 - **Powerful search** - Rich CLI with filters, date ranges, document types
 
 ### 🤖 AI Transcription
-- **Multiple AI providers** - OpenAI, OpenRouter, Claude, Qwen support
+- **Multiple AI providers** - Use OpenAI directly or OpenRouter for access to Claude, Qwen, etc.
 - **🔥 Cracked Mode** - Multi-AI transcription using 2-3 models simultaneously
 - **Real-time costs** - See actual costs as you transcribe (~$0.001-0.024 per page)
 - **Smart fallbacks** - If one AI fails, others continue
@@ -72,20 +72,26 @@ python3 main.py export-text        # Convert handwriting to text
 
 Add to your `.env` file:
 
-**Basic Setup:**
+**Basic Setup (OpenAI):**
+```bash
+OPENAI_API_KEY=sk-your_openai_key
+OPENAI_MODEL=gpt-4o
+```
+
+**Basic Setup (OpenRouter - access to multiple providers):**
 ```bash
 OPENAI_API_KEY=sk-or-v1-your_openrouter_key
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_MODEL=qwen/qwen2.5-vl-32b-instruct
 ```
 
-**🔥 Cracked Mode (Multi-AI Transcription):**
+**🔥 Cracked Mode (requires OpenRouter):**
 ```bash
 CRACKED_MODE=true
 CRACKED_MODELS=qwen/qwen2.5-vl-32b-instruct,qwen/qwen2.5-vl-7b-instruct
 CRACKED_MERGE_MODEL=qwen/qwen2.5-vl-7b-instruct
 ```
-*Uses 2-3 AI models + intelligent merging for superior accuracy.*
+*Uses multiple AI models + intelligent merging. Requires OpenRouter for access to different providers.*
 
 ## Tablet Setup
 
