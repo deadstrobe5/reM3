@@ -32,6 +32,7 @@ class Config:
     target_height: int = 2000
 
     # OpenAI settings
+    openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o"
     openai_base_url: Optional[str] = None
     openai_temperature: float = 0.0
@@ -40,7 +41,7 @@ class Config:
     # Cracked mode settings (multi-model transcription + merge)
     cracked_mode: bool = False
     cracked_models: Optional[list[str]] = None
-    cracked_merge_model: str = "gpt-4o"
+    cracked_merge_model: str = "qwen/qwen2.5-vl-7b-instruct"
 
     # Processing settings
     workers: int = 3
@@ -113,39 +114,44 @@ class Config:
             except Exception as e:
                 print(f"Warning: Could not read .env file {env_path}: {e}")
 
-        # Apply configuration (env vars take precedence)
-        config.host = os.environ.get("RM_HOST", env_vars.get("RM_HOST", config.host))
-        config.user = os.environ.get("RM_USER", env_vars.get("RM_USER", config.user))
-        config.password = os.environ.get("RM_PASSWORD", env_vars.get("RM_PASSWORD", config.password))
+        # Apply configuration (.env file takes precedence over system env vars)
+        config.host = env_vars.get("RM_HOST", os.environ.get("RM_HOST", config.host))
+        config.user = env_vars.get("RM_USER", os.environ.get("RM_USER", config.user))
+        config.password = env_vars.get("RM_PASSWORD", os.environ.get("RM_PASSWORD", config.password))
 
         # Base directory override (only if explicitly set)
-        if base := os.environ.get("RM_BASE_DIR", env_vars.get("RM_BASE_DIR")):
+        if base := env_vars.get("RM_BASE_DIR", os.environ.get("RM_BASE_DIR")):
             config.base_dir = Path(base).expanduser()
 
         # Other settings
-        if dpi := os.environ.get("RM_DPI", env_vars.get("RM_DPI")):
+        if dpi := env_vars.get("RM_DPI", os.environ.get("RM_DPI")):
             config.render_dpi = int(dpi)
-        if model := os.environ.get("OPENAI_MODEL", env_vars.get("OPENAI_MODEL")):
+
+        # OpenAI settings
+        if api_key := env_vars.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")):
+            config.openai_api_key = api_key
+            # Ensure it's available in os.environ for the transcription code
+            os.environ["OPENAI_API_KEY"] = api_key
+        if model := env_vars.get("OPENAI_MODEL", os.environ.get("OPENAI_MODEL")):
             config.openai_model = model
-        if base_url := os.environ.get("OPENAI_BASE_URL", env_vars.get("OPENAI_BASE_URL")):
+        if base_url := env_vars.get("OPENAI_BASE_URL", os.environ.get("OPENAI_BASE_URL")):
             config.openai_base_url = base_url
 
         # Cracked mode settings
-        if cracked := os.environ.get("CRACKED_MODE", env_vars.get("CRACKED_MODE")):
+        if cracked := env_vars.get("CRACKED_MODE", os.environ.get("CRACKED_MODE")):
             config.cracked_mode = cracked.lower() in ("true", "1", "yes", "on")
-        if merge_model := os.environ.get("CRACKED_MERGE_MODEL", env_vars.get("CRACKED_MERGE_MODEL")):
+        if merge_model := env_vars.get("CRACKED_MERGE_MODEL", os.environ.get("CRACKED_MERGE_MODEL")):
             config.cracked_merge_model = merge_model
-        if cracked_models := os.environ.get("CRACKED_MODELS", env_vars.get("CRACKED_MODELS")):
+        if cracked_models := env_vars.get("CRACKED_MODELS", os.environ.get("CRACKED_MODELS")):
             config.cracked_models = [m.strip() for m in cracked_models.split(",")]
         elif config.cracked_models is None:
-            # Set default cracked models
+            # Set default cracked models (using working cheap models for testing)
             config.cracked_models = [
-                "gpt-4o",
-                "anthropic/claude-3-5-sonnet:beta",
-                "qwen/qwen2.5-vl-32b-instruct"
+                "qwen/qwen2.5-vl-32b-instruct",
+                "qwen/qwen2.5-vl-7b-instruct"
             ]
 
-        if workers := os.environ.get("RM_WORKERS", env_vars.get("RM_WORKERS")):
+        if workers := env_vars.get("RM_WORKERS", os.environ.get("RM_WORKERS")):
             config.workers = int(workers)
 
         return config

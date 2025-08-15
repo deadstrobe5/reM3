@@ -6,7 +6,7 @@ import base64
 from io import BytesIO
 from PIL import Image
 from pathlib import Path
-from typing import Optional
+
 
 from openai import OpenAI
 

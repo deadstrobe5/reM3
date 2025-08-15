@@ -1,12 +1,12 @@
 # reM3 - reMarkable Sync Tool
 
-**Sync your reMarkable tablet to your computer. Organize files and convert handwriting to text with AI.**
+**Sync your reMarkable tablet and convert handwriting to text with AI.**
 
 ## What it does
 
-1. **Downloads** your files from the tablet
-2. **Organizes** them exactly like your tablet's folder structure  
-3. **Converts handwriting to text** using AI models
+1. **Syncs** your files from tablet to computer with perfect organization
+2. **Transcribes** handwriting to text using advanced AI models
+3. **🔥 Cracked Mode** - Uses multiple AI models simultaneously for superior accuracy
 
 ## Quick Start
 
@@ -18,7 +18,7 @@ python3 main.py
 
 That's it! The program will:
 - Guide you through setup (IP, password, etc.)
-- Download your files  
+- Download your files
 - Organize them in readable folders
 - Optionally convert handwriting to text
 
@@ -46,46 +46,46 @@ python3 main.py --auto-run         # Complete sync immediately
 **Individual operations:**
 ```bash
 python3 main.py sync               # Download + organize files
-python3 main.py browse             # Search and view documents  
+python3 main.py browse             # Search and view documents
 python3 main.py export-text        # Convert handwriting to text
 ```
 
 ## Features
 
-- **Lightning-fast sync** - Smart detection only downloads changed files (10x faster on subsequent syncs)
-- **Perfect organization** - Mirror your exact tablet folder structure with readable names - no UUIDs or mess
-- **Powerful search** - Rich CLI with filters, date ranges, document types - find anything instantly
-- **AI transcription** - Convert handwriting to text with multiple AI providers
-- **🔥 Cracked Mode** - Advanced multi-model transcription using 3 AI models simultaneously for maximum accuracy
-- **Cost optimization** - Choose from budget to premium options with real-time spending alerts
-- **Universal AI support** - Works with OpenAI, OpenRouter, Claude, Qwen, or any OpenAI-compatible API
-- **Production ready** - Parallel processing, retry logic, error recovery, and comprehensive logging
+### 📱 Sync & Organization
+- **Lightning-fast sync** - Smart detection only downloads changed files
+- **Perfect organization** - Mirror your exact tablet folder structure with readable names
+- **Powerful search** - Rich CLI with filters, date ranges, document types
+
+### 🤖 AI Transcription
+- **Multiple AI providers** - OpenAI, OpenRouter, Claude, Qwen support
+- **🔥 Cracked Mode** - Revolutionary multi-AI transcription using 2-3 models simultaneously
+- **Real-time costs** - See actual costs as you transcribe (~$0.001-0.024 per page)
+- **Smart fallbacks** - If one AI fails, others continue
+
+### 🛠️ Production Ready
+- **Parallel processing** - Fast transcription with multiple workers
+- **Retry logic** - Robust error recovery and handling
+- **Cost optimization** - Budget-friendly options with real-time tracking
 
 ## AI Transcription Setup
 
 Add to your `.env` file:
 
-**Option 1: OpenAI (Standard)**
+**Basic Setup:**
 ```bash
-OPENAI_API_KEY=sk-your_key_here
-```
-
-**Option 2: OpenRouter (Budget-friendly)**
-```bash
-OPENAI_API_KEY=sk-or-v1-your_key_here
+OPENAI_API_KEY=sk-or-v1-your_openrouter_key
 OPENAI_BASE_URL=https://openrouter.ai/api/v1
 OPENAI_MODEL=qwen/qwen2.5-vl-32b-instruct
 ```
 
-**Option 3: Cracked Mode (Advanced)**
+**🔥 Cracked Mode (Multi-AI Transcription):**
 ```bash
-OPENAI_API_KEY=sk-or-v1-your_key_here
-OPENAI_BASE_URL=https://openrouter.ai/api/v1
 CRACKED_MODE=true
-CRACKED_MODELS=gpt-4o,anthropic/claude-3-5-sonnet:beta,qwen/qwen2.5-vl-32b-instruct
-CRACKED_MERGE_MODEL=gpt-4o
+CRACKED_MODELS=qwen/qwen2.5-vl-32b-instruct,qwen/qwen2.5-vl-7b-instruct
+CRACKED_MERGE_MODEL=qwen/qwen2.5-vl-7b-instruct
 ```
-*Multi-model approach with intelligent merging. Higher cost but improved accuracy.*
+*Revolutionary approach: Uses 2-3 AI models + intelligent merging for superior accuracy. Our key differentiator.*
 
 ## Tablet Setup
 
@@ -100,7 +100,7 @@ CRACKED_MERGE_MODEL=gpt-4o
 ### File Types Explained
 
 - `{uuid}.metadata` - Document info (title, type, parent folder)
-- `{uuid}.content` - Page count and file type info  
+- `{uuid}.content` - Page count and file type info
 - `{uuid}.pdf/epub` - Imported documents
 - `{uuid}/` - Notebook folder containing handwritten pages
 - `{uuid}/*.rm` - Individual page files (reMarkable format)
@@ -141,7 +141,7 @@ Copy `.env.example` to `.env` and customize:
 ```bash
 # Connection
 RM_HOST=10.11.99.1           # Tablet IP
-RM_USER=root                 # SSH user  
+RM_USER=root                 # SSH user
 RM_PASSWORD=your_password    # Tablet password
 
 # Optional: AI transcription
@@ -165,15 +165,15 @@ RM_DPI=200                   # Image resolution for transcription
 ### Data Flow
 
 1. **Pull** - Downloads files from `/home/root/.local/share/remarkable/xochitl/` to `data/raw/`
-2. **Index** - Builds searchable catalog in `data/catalog.json`  
-3. **Organize** - Creates readable structure in `data/organized/` 
+2. **Index** - Builds searchable catalog in `data/catalog.json`
+3. **Organize** - Creates readable structure in `data/organized/`
 4. **Export** - Renders pages as images, sends to AI, saves text to `data/text/`
 
 ### Troubleshooting
 
 **Connection issues:**
 - Keep tablet awake during sync
-- For Wi-Fi, use tablet's Wi-Fi IP address  
+- For Wi-Fi, use tablet's Wi-Fi IP address
 - Check USB connection is enabled in tablet settings
 
 **Transcription errors:**
@@ -188,12 +188,11 @@ RM_DPI=200                   # Image resolution for transcription
 
 ### Cost Estimates
 
-**OpenRouter Qwen-7B:** ~$0.001 per page (budget option)
-**OpenRouter Qwen-32B:** ~$0.002 per page (good quality)  
-**OpenAI GPT-4o:** ~$0.01 per page (high quality)
-**Cracked Mode:** ~$0.021 per page (multi-model approach)
+**OpenRouter Qwen:** ~$0.001-0.003 per page (budget-friendly)
+**OpenAI GPT-4o:** ~$0.006 per page (premium quality)
+**Cracked Mode:** ~$0.001-0.024 per page (depends on models selected)
 
-*Actual costs shown in real-time when using OpenRouter*
+*Real-time costs shown during transcription*
 
 ### Requirements
 
@@ -204,7 +203,7 @@ RM_DPI=200                   # Image resolution for transcription
 ### Dependencies
 
 - `paramiko` - SSH connection to tablet
-- `pillow` - Image processing  
+- `pillow` - Image processing
 - `cairosvg` - SVG to image conversion
 - `openai` - AI transcription API
 - `rich` - Beautiful terminal interface
